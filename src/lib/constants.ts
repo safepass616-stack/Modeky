@@ -25,3 +25,11 @@ export const ATTENDANCE_STATUS_LABELS: Record<string, string> = {
   absent: 'Absent',
   checked_out: 'Checked Out',
 };
+
+export const VERIFICATION_STATUS_LABELS: Record<string, string> = {
+  verified: 'Verified',
+  outside_site: 'Outside Site',
+  missing_selfie: 'Missing Selfie',
+  missing_gps: 'Missing GPS',
+  manual_override: 'Manual Override',
+};

@@ -16,6 +16,12 @@ export type UserRole =
   | 'read_only';
 export type EmployeeStatus = 'active' | 'inactive';
 export type AttendanceStatus = 'present' | 'late' | 'absent' | 'checked_out';
+export type VerificationStatus =
+  | 'verified'
+  | 'outside_site'
+  | 'missing_selfie'
+  | 'missing_gps'
+  | 'manual_override';
 export type WhatsappSessionState = 'idle' | 'awaiting_location' | 'awaiting_selfie';
 export type WhatsappPendingAction = 'check_in' | 'check_out';
 
@@ -79,6 +85,7 @@ export interface Attendance {
   checkout_longitude: number | null;
   selfie_url: string | null;
   status: AttendanceStatus;
+  verification_status: VerificationStatus | null;
   minutes_late: number | null;
   attendance_date: string;
   created_at: string;

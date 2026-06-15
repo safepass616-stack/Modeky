@@ -44,6 +44,11 @@ export default async function DashboardPage({
   const employeesWithRecordToday = new Set(records.map((r) => r.employee_id));
   const absentToday = activeEmployees.filter((e) => !employeesWithRecordToday.has(e.id)).length
     + records.filter((r) => r.status === 'absent').length;
+  const exceptionsToday = records.filter((r) =>
+    r.verification_status != null
+    && r.verification_status !== 'verified'
+    && r.verification_status !== 'manual_override'
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -52,11 +57,12 @@ export default async function DashboardPage({
         <p className="text-sm text-slate-500">Workforce attendance overview</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard label="Total Employees" value={activeEmployees.length} />
         <StatCard label="Checked In Today" value={checkedIn} accent="success" />
         <StatCard label="Absent Today" value={absentToday} accent="danger" />
         <StatCard label="Late Today" value={lateToday} accent="warning" />
+        <StatCard label="Exceptions Today" value={exceptionsToday} accent="warning" />
       </div>
 
       <FilterBar

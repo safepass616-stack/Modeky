@@ -280,10 +280,12 @@ async function handleSelfie(
   const longitude = session.pending_longitude as number;
 
   let siteId: string | null = null;
+  let withinAnySiteRadius = false;
   if (sites && sites.length > 0) {
     const nearest = findNearestSite(sites, latitude, longitude);
     if (nearest?.withinRadius) {
       siteId = nearest.site.id;
+      withinAnySiteRadius = true;
     }
   }
 
@@ -315,6 +317,21 @@ async function handleSelfie(
     status = now.getHours() >= LATE_CHECKIN_HOUR ? 'late' : 'present';
   }
 
+  // ---------------------------------------------------------------------
+  // Evidence / verification status - what managers actually care about.
+  // ---------------------------------------------------------------------
+  let verificationStatus: 'verified' | 'outside_site' | 'missing_selfie' | 'missing_gps';
+
+  if (!selfieUrl) {
+    verificationStatus = 'missing_selfie';
+  } else if (latitude == null || longitude == null) {
+    verificationStatus = 'missing_gps';
+  } else if (!withinAnySiteRadius) {
+    verificationStatus = 'outside_site';
+  } else {
+    verificationStatus = 'verified';
+  }
+
   // Record (or update) the attendance row for today.
   await supabase
     .from('attendance')
@@ -329,6 +346,7 @@ async function handleSelfie(
         checkin_longitude: longitude,
         selfie_url: selfieUrl,
         status,
+        verification_status: verificationStatus,
         minutes_late: minutesLate,
         attendance_date: today,
       },

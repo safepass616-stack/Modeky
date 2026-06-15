@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { format } from 'date-fns';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { ATTENDANCE_STATUS_LABELS } from '@/lib/constants';
+import { ATTENDANCE_STATUS_LABELS, VERIFICATION_STATUS_LABELS } from '@/lib/constants';
 import type { AttendanceWithRelations } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
     checkIn: r.checkin_time ? format(new Date(r.checkin_time), 'yyyy-MM-dd HH:mm') : '',
     checkOut: r.checkout_time ? format(new Date(r.checkout_time), 'yyyy-MM-dd HH:mm') : '',
     status: ATTENDANCE_STATUS_LABELS[r.status] ?? r.status,
+    minutesLate: r.minutes_late ?? '',
+    verification: r.verification_status ? (VERIFICATION_STATUS_LABELS[r.verification_status] ?? r.verification_status) : '',
   }));
 
   const filename = `modeky-attendance-${date}`;
@@ -52,6 +54,8 @@ export async function GET(request: NextRequest) {
       { header: 'Check-In Time', key: 'checkIn', width: 20 },
       { header: 'Check-Out Time', key: 'checkOut', width: 20 },
       { header: 'Status', key: 'status', width: 14 },
+      { header: 'Late (min)', key: 'minutesLate', width: 12 },
+      { header: 'Verification', key: 'verification', width: 16 },
     ];
 
     sheet.getRow(1).font = { bold: true };
@@ -68,11 +72,11 @@ export async function GET(request: NextRequest) {
   }
 
   // Default: CSV
-  const header = ['Employee', 'Employee Code', 'Site', 'Check-In Time', 'Check-Out Time', 'Status'];
+  const header = ['Employee', 'Employee Code', 'Site', 'Check-In Time', 'Check-Out Time', 'Status', 'Late (min)', 'Verification'];
   const csvLines = [header.join(',')];
 
   for (const row of rows) {
-    const line = [row.employee, row.employeeCode, row.site, row.checkIn, row.checkOut, row.status]
+    const line = [row.employee, row.employeeCode, row.site, row.checkIn, row.checkOut, row.status, row.minutesLate, row.verification]
       .map((value) => `"${String(value).replace(/"/g, '""')}"`)
       .join(',');
     csvLines.push(line);
