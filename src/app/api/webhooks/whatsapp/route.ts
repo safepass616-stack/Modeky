@@ -8,6 +8,7 @@ import {
   HELP_MESSAGE,
 } from '@/lib/whatsapp';
 import { findNearestSite } from '@/lib/geo';
+import { computeLateness } from '@/lib/schedule';
 import { LATE_CHECKIN_HOUR } from '@/lib/constants';
 
 // ----------------------------------------------------------------------------
@@ -286,9 +287,33 @@ async function handleSelfie(
     }
   }
 
-  // Determine attendance status based on check-in time.
+  // Look up today's planned shift (if any) for accurate lateness detection.
+  const { data: schedule } = await supabase
+    .from('schedules')
+    .select('id, site_id, start_time, status')
+    .eq('employee_id', employee.id)
+    .eq('shift_date', today)
+    .neq('status', 'cancelled')
+    .maybeSingle();
+
   const now = new Date();
-  const status = now.getHours() >= LATE_CHECKIN_HOUR ? 'late' : 'present';
+  let status: 'present' | 'late';
+  let minutesLate: number | null = null;
+
+  if (schedule) {
+    const lateness = computeLateness(schedule.start_time, now);
+    minutesLate = lateness.minutesLate;
+    status = lateness.isLate ? 'late' : 'present';
+
+    // If GPS didn't match any site but a shift was scheduled at a
+    // specific site, attribute the check-in to that scheduled site.
+    if (!siteId && schedule.site_id) {
+      siteId = schedule.site_id;
+    }
+  } else {
+    // No schedule for today - fall back to the global cutoff hour.
+    status = now.getHours() >= LATE_CHECKIN_HOUR ? 'late' : 'present';
+  }
 
   // Record (or update) the attendance row for today.
   await supabase
@@ -298,11 +323,13 @@ async function handleSelfie(
         company_id: employee.company_id,
         employee_id: employee.id,
         site_id: siteId,
+        schedule_id: schedule?.id ?? null,
         checkin_time: now.toISOString(),
         checkin_latitude: latitude,
         checkin_longitude: longitude,
         selfie_url: selfieUrl,
         status,
+        minutes_late: minutesLate,
         attendance_date: today,
       },
       { onConflict: 'employee_id,attendance_date' }

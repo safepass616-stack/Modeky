@@ -63,11 +63,14 @@ export interface Site {
   updated_at: string;
 }
 
+export type ScheduleStatus = 'scheduled' | 'completed' | 'cancelled';
+
 export interface Attendance {
   id: string;
   company_id: string;
   employee_id: string;
   site_id: string | null;
+  schedule_id: string | null;
   checkin_time: string | null;
   checkout_time: string | null;
   checkin_latitude: number | null;
@@ -76,9 +79,28 @@ export interface Attendance {
   checkout_longitude: number | null;
   selfie_url: string | null;
   status: AttendanceStatus;
+  minutes_late: number | null;
   attendance_date: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface Schedule {
+  id: string;
+  company_id: string;
+  employee_id: string;
+  site_id: string | null;
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  status: ScheduleStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleWithRelations extends Schedule {
+  employees: Pick<Employee, 'id' | 'full_name' | 'employee_code'> | null;
+  sites: Pick<Site, 'id' | 'site_name'> | null;
 }
 
 export interface AttendanceWithRelations extends Attendance {
@@ -169,6 +191,18 @@ export interface Database {
           employee_id: string;
         } & Record<string, unknown>;
         Update: Partial<WhatsappSession> & Record<string, unknown>;
+        Relationships: [];
+      };
+      schedules: {
+        Row: Schedule & Record<string, unknown>;
+        Insert: Partial<Schedule> & {
+          company_id: string;
+          employee_id: string;
+          shift_date: string;
+          start_time: string;
+          end_time: string;
+        } & Record<string, unknown>;
+        Update: Partial<Schedule> & Record<string, unknown>;
         Relationships: [];
       };
       audit_logs: {

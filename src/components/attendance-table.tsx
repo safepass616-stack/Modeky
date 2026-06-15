@@ -26,6 +26,7 @@ export default function AttendanceTable({
               <th className="px-4 py-3 text-left font-semibold text-slate-600">Check-In</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-600">Check-Out</th>
               <th className="px-4 py-3 text-left font-semibold text-slate-600">Status</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">Late by</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -45,6 +46,9 @@ export default function AttendanceTable({
                 </td>
                 <td className="px-4 py-3">
                   <AttendanceStatusBadge status={record.status} />
+                </td>
+                <td className="px-4 py-3 text-slate-600">
+                  {record.minutes_late && record.minutes_late > 0 ? `${record.minutes_late} min` : '—'}
                 </td>
               </tr>
             ))}
