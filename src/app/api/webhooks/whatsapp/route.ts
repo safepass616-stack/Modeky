@@ -1,368 +1,629 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createAdminSupabaseClient } from '@/lib/supabase/server';
-import {
-  sendTextMessage,
-  sendLocationRequest,
-  downloadWhatsappMedia,
-  normalizePhoneNumber,
-  HELP_MESSAGE,
-} from '@/lib/whatsapp';
-import { findNearestSite } from '@/lib/geo';
-import { computeLateness } from '@/lib/schedule';
-import { LATE_CHECKIN_HOUR } from '@/lib/constants';
+// src/app/api/webhooks/whatsapp/route.ts
+// Modeky WhatsApp Session Engine — Meta Cloud API
+// Flows: checkin (START→location→selfie) | incident (INCIDENT→category→description→photo)
+// session_type / current_step / metadata shape on whatsapp_sessions
 
-// ----------------------------------------------------------------------------
-// GET: Webhook verification handshake (Meta calls this once when you
-// configure the webhook URL in the App dashboard).
-// ----------------------------------------------------------------------------
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
-  const mode = searchParams.get('hub.mode');
-  const token = searchParams.get('hub.verify_token');
-  const challenge = searchParams.get('hub.challenge');
+// ── Supabase admin client (bypasses RLS) ─────────────────────────────────
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
-  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
-    return new NextResponse(challenge, { status: 200 });
+const WA_TOKEN    = process.env.WHATSAPP_ACCESS_TOKEN!
+const WA_PHONE_ID = process.env.WHATSAPP_PHONE_NUMBER_ID!
+const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN!
+
+// ── Webhook verification (GET) ────────────────────────────────────────────
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  if (
+    searchParams.get('hub.mode')        === 'subscribe' &&
+    searchParams.get('hub.verify_token') === VERIFY_TOKEN
+  ) {
+    return new NextResponse(searchParams.get('hub.challenge'), { status: 200 })
   }
-
-  return new NextResponse('Forbidden', { status: 403 });
+  return new NextResponse('Forbidden', { status: 403 })
 }
 
-// ----------------------------------------------------------------------------
-// POST: Incoming message events from the WhatsApp Cloud API.
-// ----------------------------------------------------------------------------
-export async function POST(request: NextRequest) {
-  const body = await request.json();
-
-  try {
-    const entry = body.entry?.[0];
-    const change = entry?.changes?.[0];
-    const value = change?.value;
-    const message = value?.messages?.[0];
-
-    // Ignore status updates (delivered/read receipts) and anything without
-    // an actual inbound message.
-    if (!message) {
-      return NextResponse.json({ status: 'ignored' });
-    }
-
-    const fromRaw = message.from as string; // e.g. "254712345678"
-    const phoneNumber = normalizePhoneNumber(fromRaw);
-
-    await handleIncomingMessage(phoneNumber, message);
-
-    return NextResponse.json({ status: 'ok' });
-  } catch (err) {
-    console.error('WhatsApp webhook error:', err);
-    // Always return 200 so Meta does not retry indefinitely.
-    return NextResponse.json({ status: 'error' });
-  }
+// ── Webhook receiver (POST) ───────────────────────────────────────────────
+export async function POST(req: NextRequest) {
+  const body = await req.json()
+  // Always ack immediately — Meta retries on non-2xx
+  processAsync(body).catch(console.error)
+  return NextResponse.json({ status: 'ok' })
 }
 
-// ----------------------------------------------------------------------------
-// Core conversation handler
-// ----------------------------------------------------------------------------
-async function handleIncomingMessage(phoneNumber: string, message: any) {
-  const supabase = createAdminSupabaseClient();
+// ═════════════════════════════════════════════════════════════════════════
+// ASYNC PROCESSOR
+// ═════════════════════════════════════════════════════════════════════════
+async function processAsync(body: any) {
+  const entry   = body?.entry?.[0]
+  const changes = entry?.changes?.[0]
+  const value   = changes?.value
+  const msg     = value?.messages?.[0]
+  if (!msg) return
 
-  // 1. Look up the employee by phone number (globally unique across tenants).
+  const from = msg.from          // e.g. "27821234567"
+  const type = msg.type          // text | location | image | interactive
+
+  // ── Look up employee by phone ────────────────────────────────────────
+  const normalised = normalisePhone(from)
   const { data: employee } = await supabase
     .from('employees')
-    .select('*')
-    .eq('phone_number', phoneNumber)
-    .maybeSingle();
+    .select('id, company_id, full_name, status')
+    .eq('phone_number', normalised)
+    .single()
 
   if (!employee) {
-    await sendTextMessage(
-      phoneNumber,
-      "We couldn't find your number in any company's employee list. Please contact your administrator."
-    );
-    return;
+    await sendText(from, "❌ Your number isn't registered on Modeky. Contact your manager.")
+    return
   }
-
   if (employee.status !== 'active') {
-    await sendTextMessage(phoneNumber, 'Your account is inactive. Please contact your administrator.');
-    return;
+    await sendText(from, "Your account is inactive. Contact your manager.")
+    return
   }
 
-  // 2. Load (or create) the WhatsApp conversation session for this employee.
-  const { data: session } = await supabase
+  // ── Get or create session ────────────────────────────────────────────
+  let { data: session } = await supabase
     .from('whatsapp_sessions')
     .select('*')
     .eq('employee_id', employee.id)
-    .maybeSingle();
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .single()
 
-  const messageType = message.type as string;
+  // ── Route by message type + session state ────────────────────────────
+  const text = msg.text?.body?.trim().toUpperCase() ?? ''
 
-  // --- Text commands -------------------------------------------------------
-  if (messageType === 'text') {
-    const text = (message.text?.body || '').trim().toUpperCase();
-
-    if (text === 'HELP') {
-      await sendTextMessage(phoneNumber, HELP_MESSAGE);
-      return;
-    }
-
-    if (text === 'START') {
-      await handleStart(supabase, employee, phoneNumber);
-      return;
-    }
-
-    if (text === 'END') {
-      await handleEnd(supabase, employee, phoneNumber);
-      return;
-    }
-
-    // Unrecognized text
-    await sendTextMessage(
-      phoneNumber,
-      `Sorry, I didn't understand that.\n\n${HELP_MESSAGE}`
-    );
-    return;
+  // Global commands (work from any state)
+  if (text === 'START') {
+    await handleCheckinStart(from, employee, session)
+    return
+  }
+  if (text === 'END') {
+    await handleCheckout(from, employee)
+    return
+  }
+  if (text === 'INCIDENT') {
+    await handleIncidentStart(from, employee, session)
+    return
+  }
+  if (text === 'HELP') {
+    await sendText(from,
+      `*Modeky Commands*\n\n` +
+      `*START* — Check in for your shift\n` +
+      `*END* — Check out at end of shift\n` +
+      `*INCIDENT* — Report an incident\n` +
+      `*HELP* — Show this menu`
+    )
+    return
   }
 
-  // --- Location messages -----------------------------------------------------
-  if (messageType === 'location') {
-    if (session?.state === 'awaiting_location' && session.pending_action === 'check_in') {
-      const { latitude, longitude } = message.location;
+  // State-based routing
+  if (!session) return
 
-      await supabase
-        .from('whatsapp_sessions')
-        .update({
-          state: 'awaiting_selfie',
-          pending_latitude: latitude,
-          pending_longitude: longitude,
-        })
-        .eq('id', session.id);
-
-      await sendTextMessage(phoneNumber, 'Please send a selfie.');
-      return;
-    }
-
-    await sendTextMessage(
-      phoneNumber,
-      `I wasn't expecting a location right now. Send START to begin your shift.`
-    );
-    return;
+  if (session.session_type === 'checkin') {
+    await routeCheckinStep(from, employee, session, msg, type)
+  } else if (session.session_type === 'incident') {
+    await routeIncidentStep(from, employee, session, msg, type, text)
   }
-
-  // --- Image (selfie) messages -----------------------------------------------
-  if (messageType === 'image') {
-    if (session?.state === 'awaiting_selfie' && session.pending_action === 'check_in') {
-      await handleSelfie(supabase, employee, session, message, phoneNumber);
-      return;
-    }
-
-    await sendTextMessage(
-      phoneNumber,
-      `I wasn't expecting a photo right now. Send START to begin your shift.`
-    );
-    return;
-  }
-
-  // --- Anything else ---------------------------------------------------------
-  await sendTextMessage(phoneNumber, HELP_MESSAGE);
 }
 
-// ----------------------------------------------------------------------------
-// START -> begin check-in flow
-// ----------------------------------------------------------------------------
-async function handleStart(supabase: ReturnType<typeof createAdminSupabaseClient>, employee: any, phoneNumber: string) {
-  const today = new Date().toISOString().slice(0, 10);
+// ═════════════════════════════════════════════════════════════════════════
+// CHECKIN FLOW
+// ═════════════════════════════════════════════════════════════════════════
 
-  // If the employee already checked in today, don't let them check in again.
+async function handleCheckinStart(from: string, employee: any, existingSession: any) {
+  // Check if already checked in today
+  const today = new Date().toISOString().split('T')[0]
   const { data: existing } = await supabase
     .from('attendance')
     .select('id, checkin_time')
     .eq('employee_id', employee.id)
     .eq('attendance_date', today)
-    .maybeSingle();
+    .not('checkin_time', 'is', null)
+    .single()
 
-  if (existing?.checkin_time) {
-    await sendTextMessage(phoneNumber, "You're already checked in for today. Send END to check out.");
-    return;
+  if (existing) {
+    const t = new Date(existing.checkin_time).toLocaleTimeString('en-ZA', {
+      hour: '2-digit', minute: '2-digit'
+    })
+    await sendText(from, `✅ You already checked in today at *${t}*.\n\nSend *END* to check out.`)
+    return
   }
 
-  await supabase
-    .from('whatsapp_sessions')
-    .upsert({
-      company_id: employee.company_id,
-      employee_id: employee.id,
-      state: 'awaiting_location',
-      pending_action: 'check_in',
-      pending_latitude: null,
-      pending_longitude: null,
-    }, { onConflict: 'employee_id' });
+  // Create/update session
+  await upsertSession(employee, {
+    session_type: 'checkin',
+    current_step: 'awaiting_location',
+    metadata: {},
+  })
 
-  await sendLocationRequest(phoneNumber, 'Please share your location to check in.');
+  const name = employee.full_name.split(' ')[0]
+  await sendText(from,
+    `👋 Hi *${name}*! Let's get you checked in.\n\n` +
+    `📍 Please share your *current location*.\n\n` +
+    `Tap the *📎 paperclip* → *Location* → *Send your current location*.`
+  )
 }
 
-// ----------------------------------------------------------------------------
-// END -> record checkout time
-// ----------------------------------------------------------------------------
-async function handleEnd(supabase: ReturnType<typeof createAdminSupabaseClient>, employee: any, phoneNumber: string) {
-  const today = new Date().toISOString().slice(0, 10);
+async function routeCheckinStep(from: string, employee: any, session: any, msg: any, type: string) {
+  if (session.current_step === 'awaiting_location') {
+    if (type !== 'location') {
+      await sendText(from, '📍 Please share your GPS location to continue check-in.')
+      return
+    }
+    const lat = msg.location.latitude
+    const lng = msg.location.longitude
 
-  const { data: attendance } = await supabase
+    // Find nearest site
+    const { data: sites } = await supabase
+      .from('sites')
+      .select('id, site_name, latitude, longitude, radius_meters')
+      .eq('company_id', employee.company_id)
+
+    const nearest = findNearestSite(lat, lng, sites ?? [])
+
+    await upsertSession(employee, {
+      session_type: 'checkin',
+      current_step: 'awaiting_selfie',
+      metadata: {
+        latitude:  lat,
+        longitude: lng,
+        site_id:   nearest?.site?.id ?? null,
+        site_name: nearest?.site?.site_name ?? null,
+        within_radius: nearest ? nearest.distance <= nearest.site.radius_meters : false,
+      },
+    })
+
+    const locationMsg = nearest
+      ? `📍 *${nearest.site.site_name}* (${Math.round(nearest.distance)}m away)`
+      : '📍 Location noted (no site nearby)'
+
+    await sendText(from,
+      `${locationMsg}\n\n📸 Now please send a *selfie* to complete your check-in.`
+    )
+    return
+  }
+
+  if (session.current_step === 'awaiting_selfie') {
+    if (type !== 'image') {
+      await sendText(from, '📸 Please send a selfie photo to complete check-in.')
+      return
+    }
+
+    const mediaId  = msg.image.id
+    const selfieUrl = await downloadAndStoreMedia(mediaId, employee, 'selfie')
+    const meta      = session.metadata
+
+    // Determine verification status
+    let verificationStatus = 'verified'
+    if (!meta.latitude)           verificationStatus = 'missing_gps'
+    else if (!selfieUrl)          verificationStatus = 'missing_selfie'
+    else if (!meta.within_radius) verificationStatus = 'outside_site'
+
+    // Look up today's schedule
+    const today = new Date().toISOString().split('T')[0]
+    const { data: schedule } = await supabase
+      .from('schedules')
+      .select('id, start_time')
+      .eq('employee_id', employee.id)
+      .eq('shift_date', today)
+      .eq('status', 'scheduled')
+      .single()
+
+    let minutesLate: number | null = null
+    let attendanceStatus = 'present'
+    const now = new Date()
+
+    if (schedule) {
+      const [h, m] = schedule.start_time.split(':').map(Number)
+      const scheduled = new Date(now)
+      scheduled.setHours(h, m, 0, 0)
+      const diffMins = Math.floor((now.getTime() - scheduled.getTime()) / 60000)
+      if (diffMins > 5) {
+        minutesLate     = diffMins
+        attendanceStatus = 'late'
+      }
+    }
+
+    // Insert attendance record
+    const { data: attendance, error: attErr } = await supabase
+      .from('attendance')
+      .insert({
+        company_id:          employee.company_id,
+        employee_id:         employee.id,
+        site_id:             meta.site_id,
+        checkin_time:        now.toISOString(),
+        checkin_latitude:    meta.latitude,
+        checkin_longitude:   meta.longitude,
+        selfie_url:          selfieUrl,
+        status:              attendanceStatus,
+        attendance_date:     today,
+        schedule_id:         schedule?.id ?? null,
+        minutes_late:        minutesLate,
+        verification_status: verificationStatus,
+      })
+      .select('id')
+      .single()
+
+    if (attErr) {
+      console.error('Attendance insert error:', attErr)
+      await sendText(from, '⚠️ Something went wrong recording your check-in. Please try again.')
+      return
+    }
+
+    // Mark session idle — check-in done
+    await upsertSession(employee, {
+      session_type: 'checkin',
+      current_step: 'idle',
+      metadata: { last_attendance_id: attendance?.id },
+    })
+
+    // Confirmation message
+    const timeStr = now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
+    const lateMsg  = minutesLate ? `\n⏰ *${minutesLate} minutes late*` : ''
+    const siteMsg  = meta.site_name ? `\n📍 *${meta.site_name}*` : ''
+    const vMsg     = verificationStatus !== 'verified'
+      ? `\n⚠️ ${humaniseVerification(verificationStatus)}`
+      : '\n✅ GPS & selfie verified'
+
+    await sendText(from,
+      `✅ *Checked in at ${timeStr}*${siteMsg}${lateMsg}${vMsg}\n\n` +
+      `Send *END* when your shift is complete.\nSend *INCIDENT* to report an issue.`
+    )
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// CHECKOUT
+// ═════════════════════════════════════════════════════════════════════════
+
+async function handleCheckout(from: string, employee: any) {
+  const today = new Date().toISOString().split('T')[0]
+  const { data: record } = await supabase
     .from('attendance')
-    .select('*')
+    .select('id, checkin_time, checkout_time')
     .eq('employee_id', employee.id)
     .eq('attendance_date', today)
-    .maybeSingle();
+    .not('checkin_time', 'is', null)
+    .is('checkout_time', null)
+    .single()
 
-  if (!attendance?.checkin_time) {
-    await sendTextMessage(phoneNumber, "You haven't checked in today. Send START to begin your shift.");
-    return;
+  if (!record) {
+    await sendText(from, "You haven't checked in today. Send *START* to check in.")
+    return
   }
 
-  if (attendance.checkout_time) {
-    await sendTextMessage(phoneNumber, "You've already checked out today.");
-    return;
-  }
+  const now = new Date()
+  const checkinTime = new Date(record.checkin_time)
+  const hours = ((now.getTime() - checkinTime.getTime()) / 3_600_000).toFixed(1)
 
   await supabase
     .from('attendance')
     .update({
-      checkout_time: new Date().toISOString(),
+      checkout_time: now.toISOString(),
       status: 'checked_out',
     })
-    .eq('id', attendance.id);
+    .eq('id', record.id)
 
-  await sendTextMessage(phoneNumber, 'Checkout successful.');
+  await upsertSession(employee, {
+    session_type: 'checkin',
+    current_step: 'idle',
+    metadata: {},
+  })
+
+  const timeStr = now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
+  await sendText(from,
+    `👋 *Checked out at ${timeStr}*\n⏱ Shift duration: *${hours} hours*\n\nHave a safe journey home!`
+  )
 }
 
-// ----------------------------------------------------------------------------
-// Selfie received -> finalize the check-in
-// ----------------------------------------------------------------------------
-async function handleSelfie(
-  supabase: ReturnType<typeof createAdminSupabaseClient>,
+// ═════════════════════════════════════════════════════════════════════════
+// INCIDENT FLOW
+// ═════════════════════════════════════════════════════════════════════════
+
+const INCIDENT_CATEGORIES: Record<string, string> = {
+  '1': 'injury',
+  '2': 'safety_hazard',
+  '3': 'equipment',
+  '4': 'security',
+  '5': 'fire',
+  '6': 'theft',
+  '7': 'other',
+}
+
+async function handleIncidentStart(from: string, employee: any, existingSession: any) {
+  await upsertSession(employee, {
+    session_type: 'incident',
+    current_step: 'awaiting_category',
+    metadata: {},
+  })
+
+  await sendText(from,
+    `🚨 *Incident Report*\n\n` +
+    `What type of incident are you reporting?\n\n` +
+    `1 — Injury / Medical\n` +
+    `2 — Safety Hazard\n` +
+    `3 — Equipment Failure\n` +
+    `4 — Security Breach\n` +
+    `5 — Fire / Emergency\n` +
+    `6 — Theft / Vandalism\n` +
+    `7 — Other\n\n` +
+    `Reply with a number (1–7).`
+  )
+}
+
+async function routeIncidentStep(
+  from: string,
   employee: any,
   session: any,
-  message: any,
-  phoneNumber: string
+  msg: any,
+  type: string,
+  text: string
 ) {
-  const media = await downloadWhatsappMedia(message.image.id);
+  const meta = session.metadata ?? {}
 
-  if (!media) {
-    await sendTextMessage(phoneNumber, 'Sorry, we could not process that photo. Please try sending the selfie again.');
-    return;
-  }
-
-  // Upload selfie to Supabase Storage.
-  const today = new Date().toISOString().slice(0, 10);
-  const ext = media.contentType.includes('png') ? 'png' : 'jpg';
-  const path = `${employee.company_id}/${employee.id}/${today}-${Date.now()}.${ext}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from('selfies')
-    .upload(path, Buffer.from(media.bytes), {
-      contentType: media.contentType,
-      upsert: true,
-    });
-
-  if (uploadError) {
-    console.error('Selfie upload error:', uploadError);
-    await sendTextMessage(phoneNumber, 'Sorry, we could not save your photo. Please try again.');
-    return;
-  }
-
-  const { data: publicUrlData } = supabase.storage.from('selfies').getPublicUrl(path);
-  const selfieUrl = publicUrlData.publicUrl;
-
-  // Determine which site (if any) the employee is checking in at.
-  const { data: sites } = await supabase
-    .from('sites')
-    .select('id, site_name, latitude, longitude, radius_meters')
-    .eq('company_id', employee.company_id);
-
-  const latitude = session.pending_latitude as number;
-  const longitude = session.pending_longitude as number;
-
-  let siteId: string | null = null;
-  let withinAnySiteRadius = false;
-  if (sites && sites.length > 0) {
-    const nearest = findNearestSite(sites, latitude, longitude);
-    if (nearest?.withinRadius) {
-      siteId = nearest.site.id;
-      withinAnySiteRadius = true;
+  // ── Step 1: Category ──────────────────────────────────────────────
+  if (session.current_step === 'awaiting_category') {
+    const category = INCIDENT_CATEGORIES[text]
+    if (!category) {
+      await sendText(from, 'Please reply with a number between 1 and 7.')
+      return
     }
+
+    await upsertSession(employee, {
+      session_type: 'incident',
+      current_step: 'awaiting_description',
+      metadata: { ...meta, category },
+    })
+
+    await sendText(from,
+      `📝 *${humaniseCategory(category)}*\n\n` +
+      `Please describe what happened in as much detail as possible.\n\n` +
+      `_(Type your description and send)_`
+    )
+    return
   }
 
-  // Look up today's planned shift (if any) for accurate lateness detection.
-  const { data: schedule } = await supabase
-    .from('schedules')
-    .select('id, site_id, start_time, status')
-    .eq('employee_id', employee.id)
-    .eq('shift_date', today)
-    .neq('status', 'cancelled')
-    .maybeSingle();
-
-  const now = new Date();
-  let status: 'present' | 'late';
-  let minutesLate: number | null = null;
-
-  if (schedule) {
-    const lateness = computeLateness(schedule.start_time, now);
-    minutesLate = lateness.minutesLate;
-    status = lateness.isLate ? 'late' : 'present';
-
-    // If GPS didn't match any site but a shift was scheduled at a
-    // specific site, attribute the check-in to that scheduled site.
-    if (!siteId && schedule.site_id) {
-      siteId = schedule.site_id;
+  // ── Step 2: Description ───────────────────────────────────────────
+  if (session.current_step === 'awaiting_description') {
+    if (type !== 'text' || text.length < 5) {
+      await sendText(from, 'Please type a description of the incident.')
+      return
     }
-  } else {
-    // No schedule for today - fall back to the global cutoff hour.
-    status = now.getHours() >= LATE_CHECKIN_HOUR ? 'late' : 'present';
+
+    await upsertSession(employee, {
+      session_type: 'incident',
+      current_step: 'awaiting_location',
+      metadata: { ...meta, description: msg.text.body.trim() },
+    })
+
+    await sendText(from,
+      `📍 Please share your *current location* so we know where this happened.\n\n` +
+      `Tap *📎* → *Location* → *Send your current location*.`
+    )
+    return
   }
 
-  // ---------------------------------------------------------------------
-  // Evidence / verification status - what managers actually care about.
-  // ---------------------------------------------------------------------
-  let verificationStatus: 'verified' | 'outside_site' | 'missing_selfie' | 'missing_gps';
+  // ── Step 3: Location ──────────────────────────────────────────────
+  if (session.current_step === 'awaiting_location') {
+    if (type !== 'location') {
+      await sendText(from, '📍 Please share your location.')
+      return
+    }
 
-  if (!selfieUrl) {
-    verificationStatus = 'missing_selfie';
-  } else if (latitude == null || longitude == null) {
-    verificationStatus = 'missing_gps';
-  } else if (!withinAnySiteRadius) {
-    verificationStatus = 'outside_site';
-  } else {
-    verificationStatus = 'verified';
-  }
+    const { data: sites } = await supabase
+      .from('sites')
+      .select('id, site_name, latitude, longitude, radius_meters')
+      .eq('company_id', employee.company_id)
 
-  // Record (or update) the attendance row for today.
-  await supabase
-    .from('attendance')
-    .upsert(
-      {
-        company_id: employee.company_id,
-        employee_id: employee.id,
-        site_id: siteId,
-        schedule_id: schedule?.id ?? null,
-        checkin_time: now.toISOString(),
-        checkin_latitude: latitude,
-        checkin_longitude: longitude,
-        selfie_url: selfieUrl,
-        status,
-        verification_status: verificationStatus,
-        minutes_late: minutesLate,
-        attendance_date: today,
+    const nearest = findNearestSite(msg.location.latitude, msg.location.longitude, sites ?? [])
+
+    await upsertSession(employee, {
+      session_type: 'incident',
+      current_step: 'awaiting_photo',
+      metadata: {
+        ...meta,
+        latitude:  msg.location.latitude,
+        longitude: msg.location.longitude,
+        site_id:   nearest?.site?.id ?? null,
       },
-      { onConflict: 'employee_id,attendance_date' }
-    );
+    })
 
-  // Reset the conversation session.
+    await sendText(from,
+      `📸 Almost done. Send a *photo* of the incident if you have one.\n\n` +
+      `_(Send a photo, or type *SKIP* to submit without a photo)_`
+    )
+    return
+  }
+
+  // ── Step 4: Photo (optional) ──────────────────────────────────────
+  if (session.current_step === 'awaiting_photo') {
+    let mediaUrls: string[] = meta.media_urls ?? []
+
+    if (type === 'image') {
+      const url = await downloadAndStoreMedia(msg.image.id, employee, 'incident')
+      if (url) mediaUrls = [...mediaUrls, url]
+    } else if (text !== 'SKIP' && text !== 'DONE') {
+      await sendText(from, 'Send a photo of the incident, or type *SKIP* to submit.')
+      return
+    }
+
+    // Create the incident record
+    const { data: incident, error } = await supabase
+      .from('incidents')
+      .insert({
+        company_id:   employee.company_id,
+        employee_id:  employee.id,
+        site_id:      meta.site_id ?? null,
+        category:     meta.category,
+        description:  meta.description,
+        media_urls:   mediaUrls,
+        latitude:     meta.latitude ?? null,
+        longitude:    meta.longitude ?? null,
+        severity:     'medium',   // default; manager can escalate
+        status:       'open',
+        session_id:   session.id,
+      })
+      .select('id')
+      .single()
+
+    if (error) {
+      console.error('Incident insert error:', error)
+      await sendText(from, '⚠️ Failed to save your report. Please try again.')
+      return
+    }
+
+    // Reset session
+    await upsertSession(employee, {
+      session_type: 'incident',
+      current_step: 'idle',
+      metadata: {},
+    })
+
+    await sendText(from,
+      `✅ *Incident report submitted!*\n\n` +
+      `📋 Category: *${humaniseCategory(meta.category)}*\n` +
+      `🔢 Ref: #${(incident?.id ?? '').slice(0, 8).toUpperCase()}\n\n` +
+      `Your manager has been notified. Stay safe!\n\n` +
+      `Send *START* to check in or *HELP* for commands.`
+    )
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ═════════════════════════════════════════════════════════════════════════
+
+function normalisePhone(raw: string): string {
+  // Strip leading + or 00, keep digits only
+  let n = raw.replace(/\D/g, '')
+  if (n.startsWith('00')) n = n.slice(2)
+  return `+${n}`
+}
+
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000 // metres
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLon = ((lon2 - lon1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function findNearestSite(lat: number, lng: number, sites: any[]) {
+  if (!sites.length) return null
+  let nearest = null
+  let minDist = Infinity
+  for (const site of sites) {
+    const d = haversineDistance(lat, lng, site.latitude, site.longitude)
+    if (d < minDist) { minDist = d; nearest = site }
+  }
+  return nearest ? { site: nearest, distance: minDist } : null
+}
+
+async function upsertSession(employee: any, fields: {
+  session_type: string
+  current_step: string
+  metadata: Record<string, any>
+}) {
   await supabase
     .from('whatsapp_sessions')
-    .update({
-      state: 'idle',
-      pending_action: null,
-      pending_latitude: null,
-      pending_longitude: null,
-    })
-    .eq('id', session.id);
+    .upsert(
+      {
+        employee_id:  employee.id,
+        company_id:   employee.company_id,
+        ...fields,
+        state:        fields.current_step, // keep old column in sync
+        updated_at:   new Date().toISOString(),
+      },
+      { onConflict: 'employee_id' }
+    )
+}
 
-  await sendTextMessage(phoneNumber, 'Check-in successful.');
+async function downloadAndStoreMedia(
+  mediaId: string,
+  employee: any,
+  type: 'selfie' | 'incident'
+): Promise<string | null> {
+  try {
+    // 1. Get media URL from Meta
+    const urlRes = await fetch(
+      `https://graph.facebook.com/v19.0/${mediaId}`,
+      { headers: { Authorization: `Bearer ${WA_TOKEN}` } }
+    )
+    const urlData = await urlRes.json()
+    const mediaUrl: string = urlData.url
+    if (!mediaUrl) return null
+
+    // 2. Download the file
+    const fileRes = await fetch(mediaUrl, {
+      headers: { Authorization: `Bearer ${WA_TOKEN}` }
+    })
+    const buffer = await fileRes.arrayBuffer()
+    const contentType = fileRes.headers.get('content-type') ?? 'image/jpeg'
+    const ext = contentType.includes('png') ? 'png' : 'jpg'
+
+    // 3. Upload to Supabase Storage
+    const bucket  = type === 'selfie' ? 'selfies' : 'incident-media'
+    const path    = `${employee.company_id}/${employee.id}/${Date.now()}.${ext}`
+
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(path, buffer, { contentType, upsert: false })
+
+    if (error) { console.error('Storage upload error:', error); return null }
+
+    const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path)
+    return publicUrl
+  } catch (err) {
+    console.error('Media download error:', err)
+    return null
+  }
+}
+
+async function sendText(to: string, text: string) {
+  await fetch(
+    `https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${WA_TOKEN}`,
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'text',
+        text: { body: text },
+      }),
+    }
+  )
+}
+
+function humaniseVerification(v: string): string {
+  return {
+    outside_site:   'You were outside the expected site radius',
+    missing_selfie: 'Selfie could not be saved — please retry',
+    missing_gps:    'Location was not captured',
+  }[v] ?? v
+}
+
+function humaniseCategory(c: string): string {
+  return {
+    injury:        'Injury / Medical',
+    safety_hazard: 'Safety Hazard',
+    equipment:     'Equipment Failure',
+    security:      'Security Breach',
+    fire:          'Fire / Emergency',
+    theft:         'Theft / Vandalism',
+    other:         'Other',
+  }[c] ?? c
 }

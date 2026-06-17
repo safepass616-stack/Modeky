@@ -1,59 +1,157 @@
-// src/components/ModekyLogo.tsx
-// Custom Modeky compass logo — matches the Figma design exactly
+import React from 'react';
 
 interface ModekyLogoProps {
-  size?: number
-  variant?: 'default' | 'inverted'   // inverted = white (for dark sidebar)
-  className?: string
+  size?: number;
+  showText?: boolean;
+  variant?: 'full' | 'icon' | 'horizontal';
+  className?: string;
 }
 
-export function ModekyLogo({ size = 32, variant = 'default', className = '' }: ModekyLogoProps) {
-  const isInverted = variant === 'inverted'
+export function ModekyLogo({ 
+  size = 40, 
+  showText = true, 
+  variant = 'horizontal',
+  className = ''
+}: ModekyLogoProps) {
+  const iconSize = size;
+  const textSize = Math.max(size * 0.5, 16);
 
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 40 40"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-label="Modeky"
-    >
-      {/* North arrow */}
-      <path
-        d="M20 2 L23.5 17 L20 14 L16.5 17 Z"
-        fill={isInverted ? 'white' : '#2563EB'}
-      />
-      {/* South arrow */}
-      <path
-        d="M20 38 L23.5 23 L20 26 L16.5 23 Z"
-        fill={isInverted ? 'rgba(255,255,255,0.7)' : '#1E40AF'}
-      />
-      {/* East arrow */}
-      <path
-        d="M38 20 L23 16.5 L26 20 L23 23.5 Z"
-        fill={isInverted ? 'white' : '#2563EB'}
-      />
-      {/* West arrow */}
-      <path
-        d="M2 20 L17 16.5 L14 20 L17 23.5 Z"
-        fill={isInverted ? 'rgba(255,255,255,0.7)' : '#1E40AF'}
-      />
-      {/* Center diamond */}
-      <path
-        d="M20 13 L27 20 L20 27 L13 20 Z"
-        fill={isInverted ? 'rgba(255,255,255,0.15)' : '#EFF6FF'}
-      />
-      {/* Check mark inside diamond */}
-      <path
-        d="M15.5 20.2 L18.5 23.2 L24.5 17.2"
-        stroke={isInverted ? 'white' : '#2563EB'}
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+  if (variant === 'icon') {
+    return (
+      <svg
+        width={iconSize}
+        height={iconSize}
+        viewBox="0 0 100 100"
         fill="none"
-      />
-    </svg>
-  )
+        xmlns="http://www.w3.org/2000/svg"
+        className={className}
+      >
+        {/* Chat Bubble */}
+        <path
+          d="M20 15C20 10.58 23.58 7 29 7H75C80.42 7 84 10.58 84 15V55C84 59.42 80.42 63 75 63H45L30 75C28 76.5 25 75.5 25 73V63C22.24 63 20 60.76 20 58V15Z"
+          fill="#2563EB"
+          opacity="0.1"
+          stroke="#2563EB"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* Checkmark Shield */}
+        <g transform="translate(50, 35)">
+          {/* Shield background */}
+          <path
+            d="M0 -15C0 -15 -15 -5 -15 5C-15 15 0 25 0 25C0 25 15 15 15 5C15 -5 0 -15 0 -15Z"
+            fill="#2563EB"
+          />
+          
+          {/* Checkmark */}
+          <path
+            d="M-5 5L0 10L8 2"
+            stroke="white"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </g>
+      </svg>
+    );
+  }
+
+  if (variant === 'full' || !showText) {
+    return (
+      <div className={className}>
+        <svg
+          width={iconSize}
+          height={iconSize}
+          viewBox="0 0 100 100"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {/* Chat Bubble */}
+          <path
+            d="M20 15C20 10.58 23.58 7 29 7H75C80.42 7 84 10.58 84 15V55C84 59.42 80.42 63 75 63H45L30 75C28 76.5 25 75.5 25 73V63C22.24 63 20 60.76 20 58V15Z"
+            fill="#2563EB"
+            opacity="0.1"
+            stroke="#2563EB"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Checkmark Shield */}
+          <g transform="translate(50, 35)">
+            {/* Shield background */}
+            <path
+              d="M0 -15C0 -15 -15 -5 -15 5C-15 15 0 25 0 25C0 25 15 15 15 5C15 -5 0 -15 0 -15Z"
+              fill="#2563EB"
+            />
+            
+            {/* Checkmark */}
+            <path
+              d="M-5 5L0 10L8 2"
+              stroke="white"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </g>
+        </svg>
+      </div>
+    );
+  }
+
+  // Horizontal layout (default)
+  return (
+    <div className={`flex items-center gap-2.5 ${className}`}>
+      <svg
+        width={iconSize}
+        height={iconSize}
+        viewBox="0 0 100 100"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        {/* Chat Bubble */}
+        <path
+          d="M20 15C20 10.58 23.58 7 29 7H75C80.42 7 84 10.58 84 15V55C84 59.42 80.42 63 75 63H45L30 75C28 76.5 25 75.5 25 73V63C22.24 63 20 60.76 20 58V15Z"
+          fill="#2563EB"
+          opacity="0.1"
+          stroke="#2563EB"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* Checkmark Shield */}
+        <g transform="translate(50, 35)">
+          {/* Shield background */}
+          <path
+            d="M0 -15C0 -15 -15 -5 -15 5C-15 15 0 25 0 25C0 25 15 15 15 5C15 -5 0 -15 0 -15Z"
+            fill="#2563EB"
+          />
+          
+          {/* Checkmark */}
+          <path
+            d="M-5 5L0 10L8 2"
+            stroke="white"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </g>
+      </svg>
+
+      {showText && (
+        <span
+          style={{ fontSize: `${textSize}px` }}
+          className="font-bold text-foreground tracking-tight"
+        >
+          Modeky
+        </span>
+      )}
+    </div>
+  );
 }
