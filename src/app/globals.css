@@ -38,6 +38,27 @@
 
   /* Shadows */
   --shadow-card: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+
+  /* ── shadcn/ui-style semantic tokens (HSL components, no hsl() wrapper) ──
+     Used by the landing page's bg-primary / text-foreground / border-border
+     etc. Mapped onto the same navy/blue brand colors used everywhere else. */
+  --background:           0 0% 100%;
+  --foreground:           222 47% 11%;   /* slate-900 */
+  --card:                 0 0% 100%;
+  --card-foreground:      222 47% 11%;
+  --primary:              221 83% 53%;   /* #2563EB */
+  --primary-foreground:   0 0% 100%;
+  --secondary:            210 40% 96%;   /* slate-100 */
+  --secondary-foreground: 222 47% 11%;
+  --muted:                210 40% 96%;
+  --muted-foreground:     215 16% 47%;   /* slate-500 */
+  --accent:               210 40% 96%;
+  --accent-foreground:    222 47% 11%;
+  --destructive:          0 72% 51%;     /* red-600 */
+  --destructive-foreground: 0 0% 100%;
+  --border:               214 32% 91%;  /* slate-200 */
+  --input:                214 32% 91%;
+  --ring:                 221 83% 53%;
 }
 
 /* ── Base resets ────────────────────────────────────────────────────────── */
@@ -131,11 +152,14 @@
   }
 
   /* Semantic text/bg tokens used across CRUD pages — kept in sync with the
-     navy/blue palette used by the dashboard, sidebar, and landing page */
-  .text-primary   { color: theme('colors.slate.900'); }
+     navy/blue palette used by the dashboard, sidebar, and landing page.
+     Note: text-primary / bg-primary now come from Tailwind's color config
+     (mapped to the shadcn-style --primary CSS var) rather than being
+     defined here, to avoid duplicate/conflicting class definitions.
+     text-secondary is a link-color utility (blue) — distinct from
+     Tailwind's `secondary` token, which is a light background color. */
   .text-secondary { color: theme('colors.blue.600'); }
   .text-danger    { color: theme('colors.red.600'); }
-  .bg-primary     { background-color: var(--color-navy); }
 
   /* Form field label, paired with .input */
   .label {
