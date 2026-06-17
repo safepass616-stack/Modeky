@@ -1,10 +1,11 @@
+import type { ReactNode } from 'react';
 import { ModekyLogo } from '@/components/ModekyLogo';
 import { Sidebar } from '@/components/Sidebar';
 
 export default function DashboardLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className="flex h-screen bg-background">
