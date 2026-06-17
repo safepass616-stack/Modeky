@@ -10,9 +10,10 @@ const config: Config = {
     extend: {
       // ── Modeky Design Tokens ──────────────────────────────────────────
       colors: {
-        // Core brand
+        // Core brand (named tokens for places that want the exact brand hex
+        // directly; does not override Tailwind's default blue-50..blue-900 scale)
         navy:    '#0F172A',
-        blue:    '#2563EB',
+        brand:   '#2563EB',
         // Semantic
         success: '#16A34A',
         warning: '#F59E0B',

@@ -59,22 +59,22 @@ export default async function DashboardPage({
       .from('employees')
       .select('*', { count: 'exact', head: true })
       .eq('company_id', profile.company_id)
-      .eq('is_active', true),
+      .eq('status', 'active'),
 
     supabase
       .from('attendance')
       .select('*', { count: 'exact', head: true })
       .eq('company_id', profile.company_id)
-      .gte('check_in_time', `${today}T00:00:00`)
-      .lte('check_in_time', `${today}T23:59:59`),
+      .gte('checkin_time', `${today}T00:00:00`)
+      .lte('checkin_time', `${today}T23:59:59`),
 
     supabase
       .from('attendance')
       .select('*', { count: 'exact', head: true })
       .eq('company_id', profile.company_id)
       .gt('minutes_late', 0)
-      .gte('check_in_time', `${today}T00:00:00`)
-      .lte('check_in_time', `${today}T23:59:59`),
+      .gte('checkin_time', `${today}T00:00:00`)
+      .lte('checkin_time', `${today}T23:59:59`),
 
     supabase
       .from('sites')
@@ -85,29 +85,29 @@ export default async function DashboardPage({
     supabase
       .from('attendance')
       .select(`
-        id, check_in_time, check_out_time, status, minutes_late,
+        id, checkin_time, checkout_time, status, minutes_late,
         verification_status, selfie_url,
-        employees ( id, name ),
-        sites     ( id, name )
+        employees ( id, full_name ),
+        sites     ( id, site_name )
       `)
       .eq('company_id', profile.company_id)
-      .gte('check_in_time', `${today}T00:00:00`)
-      .lte('check_in_time', `${today}T23:59:59`)
-      .order('check_in_time', { ascending: false })
+      .gte('checkin_time', `${today}T00:00:00`)
+      .lte('checkin_time', `${today}T23:59:59`)
+      .order('checkin_time', { ascending: false })
       .limit(50),
 
     supabase
       .from('employees')
-      .select('id, name')
+      .select('id, full_name')
       .eq('company_id', profile.company_id)
-      .eq('is_active', true)
-      .order('name'),
+      .eq('status', 'active')
+      .order('full_name'),
 
     supabase
       .from('sites')
-      .select('id, name')
+      .select('id, site_name')
       .eq('company_id', profile.company_id)
-      .order('name'),
+      .order('site_name'),
   ])
 
   // Filter client-side for site/employee (avoids complex RPC)
@@ -226,8 +226,8 @@ export default async function DashboardPage({
         {/* Filters */}
         <div className="px-5 py-3 border-b border-slate-50 bg-slate-50/50">
           <AttendanceFilters
-            employees={employees ?? []}
-            sites={sites ?? []}
+            employees={(employees ?? []).map((e: any) => ({ id: e.id, name: e.full_name }))}
+            sites={(sites ?? []).map((s: any) => ({ id: s.id, name: s.site_name }))}
             currentDate={today}
             currentSiteId={searchParams.site_id}
             currentEmployeeId={searchParams.employee_id}
@@ -263,23 +263,23 @@ export default async function DashboardPage({
                     <td className="td">
                       <div className="flex items-center gap-2.5">
                         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
-                          {(row.employees?.name?.[0] ?? '?').toUpperCase()}
+                          {(row.employees?.full_name?.[0] ?? '?').toUpperCase()}
                         </div>
-                        <span className="font-medium text-slate-800">{row.employees?.name ?? '—'}</span>
+                        <span className="font-medium text-slate-800">{row.employees?.full_name ?? '—'}</span>
                       </div>
                     </td>
 
                     {/* Site */}
-                    <td className="td text-slate-500">{row.sites?.name ?? '—'}</td>
+                    <td className="td text-slate-500">{row.sites?.site_name ?? '—'}</td>
 
                     {/* Check-in */}
                     <td className="td text-slate-700" style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-                      {fmtTime(row.check_in_time)}
+                      {fmtTime(row.checkin_time)}
                     </td>
 
                     {/* Check-out */}
                     <td className="td text-slate-400" style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-                      {row.check_out_time ? fmtTime(row.check_out_time) : '—'}
+                      {row.checkout_time ? fmtTime(row.checkout_time) : '—'}
                     </td>
 
                     {/* Minutes late */}

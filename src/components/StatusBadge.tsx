@@ -9,7 +9,7 @@ interface StatusBadgeProps {
 }
 
 // Auto-map known status strings to variants
-function resolveVariant(status: string): StatusBadgeProps['variant'] {
+function resolveVariant(status: string): NonNullable<StatusBadgeProps['variant']> {
   const s = status.toLowerCase()
   if (['present', 'verified', 'on site', 'active', 'checked in', 'fully staffed'].includes(s)) return 'green'
   if (['late', 'understaffed', 'outside_site', 'on leave'].includes(s)) return 'amber'

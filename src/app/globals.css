@@ -101,7 +101,7 @@
     hover-background: rgba(255,255,255,0.08);
   }
   .nav-item-active {
-    @apply bg-blue text-white;
+    @apply text-white;
     background-color: #2563EB;
   }
 

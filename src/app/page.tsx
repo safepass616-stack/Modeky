@@ -276,7 +276,7 @@ export default function LandingPage() {
               { quote: 'GPS verification eliminates excuses. We know exactly where our teams are, every moment.', author: 'Mike D.', role: 'Site Manager, BuildCo' },
             ].map(({ quote, author, role }) => (
               <div key={author} className="p-6 bg-card rounded-lg border border-border">
-                <p className="text-foreground mb-4 italic">"{quote}"</p>
+                <p className="text-foreground mb-4 italic">&ldquo;{quote}&rdquo;</p>
                 <div>
                   <p className="font-semibold text-foreground">{author}</p>
                   <p className="text-sm text-muted-foreground">{role}</p>

@@ -16,7 +16,7 @@ import {
   LogOut,
 } from 'lucide-react'
 import { ModekyLogo } from './ModekyLogo'
-import { createBrowserSupabaseClient } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/client'
 
 const NAV_ITEMS = [
   { href: '/dashboard',   label: 'Dashboard',  icon: LayoutDashboard },
@@ -46,7 +46,7 @@ export function Sidebar({ companyName, userEmail, userName }: SidebarProps) {
   const displayName = userName ?? userEmail ?? 'Admin'
 
   async function handleSignOut() {
-    const supabase = createBrowserSupabaseClient()
+    const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
