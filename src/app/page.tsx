@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ArrowRight, MapPin, Camera, Eye, FileText, CheckCircle, AlertCircle, MessageSquare } from 'lucide-react';
+import { ModekyLogo } from '@/components/ModekyLogo';
 
 export default function LandingPage() {
   return (
@@ -8,11 +9,17 @@ export default function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground font-bold">M</div>
+            <ModekyLogo size={32} />
             <span className="font-bold text-lg text-foreground">Modeky</span>
           </div>
           
           <div className="flex items-center gap-4">
+            <Link
+              href="/pricing"
+              className="px-4 py-2 text-sm font-medium text-foreground hover:bg-muted rounded-lg transition hidden sm:inline-block"
+            >
+              Pricing
+            </Link>
             <Link 
               href="/login" 
               className="px-4 py-2 text-sm font-medium text-foreground hover:bg-muted rounded-lg transition"
@@ -323,8 +330,8 @@ export default function LandingPage() {
             <div>
               <h4 className="font-semibold text-foreground mb-4">Product</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-foreground transition">Features</a></li>
-                <li><a href="#" className="hover:text-foreground transition">Pricing</a></li>
+                <li><a href="#features" className="hover:text-foreground transition">Features</a></li>
+                <li><Link href="/pricing" className="hover:text-foreground transition">Pricing</Link></li>
                 <li><a href="#" className="hover:text-foreground transition">Security</a></li>
               </ul>
             </div>
