@@ -1,6 +1,5 @@
 import { ModekyLogo } from '@/components/ModekyLogo';
 import { Sidebar } from '@/components/Sidebar';
-import { Topbar } from '@/components/topbar';
 
 export default function DashboardLayout({
   children,
@@ -38,9 +37,12 @@ export default function DashboardLayout({
             <ModekyLogo size={28} showText={false} variant="icon" />
           </div>
 
-          {/* Topbar Content */}
-          <div className="flex-1 flex items-center justify-end">
-            <Topbar />
+          {/* Topbar Spacer */}
+          <div className="flex-1" />
+
+          {/* Topbar Content - replace with your actual topbar component if needed */}
+          <div className="flex items-center gap-4">
+            {/* User menu, settings, etc. go here */}
           </div>
         </header>
 
