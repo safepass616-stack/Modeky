@@ -1,63 +1,144 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ── Modeky CSS Custom Properties ──────────────────────────────────────── */
 :root {
-  --color-primary: #0F172A;
-  --color-secondary: #2563EB;
+  /* Brand */
+  --color-navy:    #0F172A;
+  --color-blue:    #2563EB;
+  --color-blue-dark: #1D4ED8;
+
+  /* Semantic */
   --color-success: #16A34A;
   --color-warning: #F59E0B;
-  --color-danger: #DC2626;
+  --color-danger:  #DC2626;
+
+  /* Backgrounds */
+  --color-bg:      #F8FAFC;
+  --color-surface: #FFFFFF;
+
+  /* Sidebar */
+  --sidebar-width: 15rem;   /* 240px */
+  --sidebar-bg:    #0F172A;
+
+  /* Typography */
+  --font-heading: 'Plus Jakarta Sans', Inter, system-ui, sans-serif;
+  --font-body:    'Inter', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Border radius */
+  --radius-sm:  0.5rem;
+  --radius-md:  0.75rem;
+  --radius-lg:  1rem;
+  --radius-xl:  1.25rem;
+  --radius-2xl: 1.5rem;
+
+  /* Shadows */
+  --shadow-card: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
 }
 
-body {
-  @apply bg-slate-50 text-slate-900;
+/* ── Base resets ────────────────────────────────────────────────────────── */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    border-color: theme('colors.slate.200');
+  }
+
+  html {
+    font-family: var(--font-body);
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: theme('colors.slate.900');
+  }
+
+  /* Headings always use Plus Jakarta Sans */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+
+  /* Make buttons inherit font */
+  button, input, select, textarea {
+    font-family: inherit;
+  }
 }
 
-.btn {
-  @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+/* ── Utility classes ────────────────────────────────────────────────────── */
+@layer utilities {
+  /* Font families */
+  .font-heading { font-family: var(--font-heading); }
+  .font-body    { font-family: var(--font-body); }
+  .font-mono    { font-family: var(--font-mono); }
+
+  /* Card pattern */
+  .card {
+    background: white;
+    border-radius: var(--radius-lg);
+    border: 1px solid theme('colors.slate.100');
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Status badge patterns */
+  .badge-green  { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200; }
+  .badge-amber  { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200; }
+  .badge-red    { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200; }
+  .badge-blue   { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200; }
+  .badge-slate  { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600; }
+
+  /* Sidebar nav item */
+  .nav-item {
+    @apply w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-400 hover:text-white;
+    hover-background: rgba(255,255,255,0.08);
+  }
+  .nav-item-active {
+    @apply bg-blue text-white;
+    background-color: #2563EB;
+  }
+
+  /* Table header */
+  .th {
+    @apply px-5 py-3 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider;
+  }
+
+  /* Table row */
+  .td {
+    @apply px-5 py-3.5 text-sm;
+  }
+
+  /* Primary button */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors;
+  }
+
+  /* Secondary button */
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-semibold rounded-xl hover:bg-slate-800 transition-colors;
+  }
+
+  /* Ghost button */
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 text-sm font-medium rounded-xl hover:border-slate-300 transition-colors;
+  }
 }
 
-.btn-primary {
-  @apply btn bg-secondary text-white hover:bg-blue-700;
-}
+/* ── Scrollbar styling ──────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: theme('colors.slate.200'); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: theme('colors.slate.300'); }
 
-.btn-secondary {
-  @apply btn bg-white text-primary border border-slate-300 hover:bg-slate-50;
-}
-
-.btn-danger {
-  @apply btn bg-danger text-white hover:bg-red-700;
-}
-
-.input {
-  @apply block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-secondary focus:ring-1 focus:ring-secondary focus:outline-none;
-}
-
-.label {
-  @apply block text-sm font-medium text-slate-700 mb-1;
-}
-
-.card {
-  @apply rounded-lg border border-slate-200 bg-white shadow-sm;
-}
-
-.badge {
-  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
-}
-
-.badge-success {
-  @apply badge bg-green-100 text-green-800;
-}
-
-.badge-warning {
-  @apply badge bg-amber-100 text-amber-800;
-}
-
-.badge-danger {
-  @apply badge bg-red-100 text-red-800;
-}
-
-.badge-neutral {
-  @apply badge bg-slate-100 text-slate-700;
+/* ── Focus ring ─────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #2563EB;
+  outline-offset: 2px;
 }

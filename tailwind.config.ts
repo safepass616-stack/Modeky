@@ -1,114 +1,90 @@
-import type { Config } from "tailwindcss";
+import type { Config } from 'tailwindcss'
 
 const config: Config = {
   content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     extend: {
-      fontFamily: {
-        sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
-        display: ["Plus Jakarta Sans", "system-ui", "-apple-system", "sans-serif"],
-        mono: ["JetBrains Mono", "monospace"],
-      },
-      fontSize: {
-        xs: ["0.75rem", { lineHeight: "1.5" }],
-        sm: ["0.875rem", { lineHeight: "1.5" }],
-        base: ["1rem", { lineHeight: "1.6" }],
-        lg: ["1.125rem", { lineHeight: "1.5" }],
-        xl: ["1.25rem", { lineHeight: "1.5" }],
-        "2xl": ["1.5rem", { lineHeight: "1.4" }],
-        "3xl": ["1.875rem", { lineHeight: "1.3" }],
-        "4xl": ["2rem", { lineHeight: "1.3" }],
-      },
-      fontWeight: {
-        normal: "400",
-        medium: "500",
-        semibold: "600",
-        bold: "700",
-      },
+      // ── Modeky Design Tokens ──────────────────────────────────────────
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
-        card: "var(--card)",
-        "card-foreground": "var(--card-foreground)",
-        popover: "var(--popover)",
-        "popover-foreground": "var(--popover-foreground)",
-        primary: {
-          DEFAULT: "var(--primary)",
-          foreground: "var(--primary-foreground)",
-        },
-        secondary: {
-          DEFAULT: "var(--secondary)",
-          foreground: "var(--secondary-foreground)",
-        },
-        success: {
-          DEFAULT: "var(--success)",
-          foreground: "var(--success-foreground)",
-        },
-        warning: {
-          DEFAULT: "var(--warning)",
-          foreground: "var(--warning-foreground)",
-        },
-        destructive: {
-          DEFAULT: "var(--destructive)",
-          foreground: "var(--destructive-foreground)",
-        },
-        muted: {
-          DEFAULT: "var(--muted)",
-          foreground: "var(--muted-foreground)",
-        },
-        accent: {
-          DEFAULT: "var(--accent)",
-          foreground: "var(--accent-foreground)",
-        },
-        border: "var(--border)",
-        input: "var(--input)",
-        ring: "var(--ring)",
-        chart: {
-          "1": "var(--chart-1)",
-          "2": "var(--chart-2)",
-          "3": "var(--chart-3)",
-          "4": "var(--chart-4)",
-          "5": "var(--chart-5)",
+        // Core brand
+        navy:    '#0F172A',
+        blue:    '#2563EB',
+        // Semantic
+        success: '#16A34A',
+        warning: '#F59E0B',
+        danger:  '#DC2626',
+        // Backgrounds
+        surface: '#F8FAFC',
+        // Slate scale (matches Figma)
+        slate: {
+          50:  '#F8FAFC',
+          100: '#F1F5F9',
+          200: '#E2E8F0',
+          300: '#CBD5E1',
+          400: '#94A3B8',
+          500: '#64748B',
+          600: '#475569',
+          700: '#334155',
+          800: '#1E293B',
+          900: '#0F172A',
         },
       },
+
+      fontFamily: {
+        // Headings — Plus Jakarta Sans
+        heading: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
+        // Body — Inter
+        body:    ['Inter', 'system-ui', 'sans-serif'],
+        // Mono — for times, phone numbers, codes
+        mono:    ['"JetBrains Mono"', '"Fira Code"', 'monospace'],
+      },
+
       borderRadius: {
-        lg: "var(--radius-lg)",
-        md: "var(--radius-md)",
-        sm: "var(--radius-sm)",
-        xl: "var(--radius-xl)",
+        // Figma uses 0.75rem = 12px as base, 1rem = 16px for cards
+        DEFAULT: '0.75rem',
+        sm:  '0.5rem',
+        md:  '0.75rem',
+        lg:  '1rem',
+        xl:  '1.25rem',
+        '2xl': '1.5rem',
+        full: '9999px',
       },
+
       boxShadow: {
-        sm: "0 1px 3px rgba(15, 23, 42, 0.08)",
-        md: "0 4px 6px rgba(15, 23, 42, 0.1)",
-        lg: "0 10px 15px rgba(15, 23, 42, 0.1)",
-        xl: "0 20px 25px rgba(15, 23, 42, 0.1)",
+        // Soft card shadows matching Figma
+        card:   '0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04)',
+        'card-hover': '0 4px 12px rgba(15,23,42,0.08), 0 2px 4px rgba(15,23,42,0.04)',
+        sm:     '0 1px 2px rgba(15,23,42,0.05)',
+        DEFAULT:'0 1px 3px rgba(15,23,42,0.1), 0 1px 2px rgba(15,23,42,0.06)',
+        md:     '0 4px 6px rgba(15,23,42,0.07), 0 2px 4px rgba(15,23,42,0.05)',
+        lg:     '0 10px 15px rgba(15,23,42,0.08), 0 4px 6px rgba(15,23,42,0.04)',
       },
+
+      // Extend spacing for consistent layout
+      spacing: {
+        '4.5': '1.125rem',
+        '5.5': '1.375rem',
+        '13':  '3.25rem',
+        '15':  '3.75rem',
+        '18':  '4.5rem',
+      },
+
+      // Sidebar width
+      width: {
+        sidebar: '15rem', // 240px
+      },
+
+      // Animation for the live pulse indicator
       animation: {
-        spin: "spin 1s linear infinite",
-        pulse: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-      },
-      keyframes: {
-        spin: {
-          to: {
-            transform: "rotate(360deg)",
-          },
-        },
-        pulse: {
-          "0%, 100%": {
-            opacity: "1",
-          },
-          "50%": {
-            opacity: "0.5",
-          },
-        },
+        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
     },
   },
   plugins: [],
-};
+}
 
-export default config;
+export default config
