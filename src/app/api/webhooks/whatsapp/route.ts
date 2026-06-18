@@ -1,27 +1,25 @@
 // src/app/api/webhooks/whatsapp/route.ts
 // Modeky WhatsApp Session Engine — Meta Cloud API
 // Flows: checkin (START→location→selfie) | incident (INCIDENT→category→description→photo)
-// session_type / current_step / metadata shape on whatsapp_sessions
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-// ── Supabase admin client (bypasses RLS) ─────────────────────────────────
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-const WA_TOKEN    = process.env.WHATSAPP_ACCESS_TOKEN!
-const WA_PHONE_ID = process.env.WHATSAPP_PHONE_NUMBER_ID!
-const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN!
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL as string
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY as string
+  return createClient(url, key)
+}
+function waToken()    { return process.env.WHATSAPP_ACCESS_TOKEN as string }
+function waPhoneId()  { return process.env.WHATSAPP_PHONE_NUMBER_ID as string }
+function verifyToken(){ return process.env.WHATSAPP_VERIFY_TOKEN as string }
 
 // ── Webhook verification (GET) ────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   if (
-    searchParams.get('hub.mode')        === 'subscribe' &&
-    searchParams.get('hub.verify_token') === VERIFY_TOKEN
+    searchParams.get('hub.mode')         === 'subscribe' &&
+    searchParams.get('hub.verify_token') === verifyToken()
   ) {
     return new NextResponse(searchParams.get('hub.challenge'), { status: 200 })
   }
@@ -31,7 +29,6 @@ export async function GET(req: NextRequest) {
 // ── Webhook receiver (POST) ───────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  // Always ack immediately — Meta retries on non-2xx
   processAsync(body).catch(console.error)
   return NextResponse.json({ status: 'ok' })
 }
@@ -40,16 +37,16 @@ export async function POST(req: NextRequest) {
 // ASYNC PROCESSOR
 // ═════════════════════════════════════════════════════════════════════════
 async function processAsync(body: any) {
+  const supabase = getSupabase()
   const entry   = body?.entry?.[0]
   const changes = entry?.changes?.[0]
   const value   = changes?.value
   const msg     = value?.messages?.[0]
   if (!msg) return
 
-  const from = msg.from          // e.g. "27821234567"
-  const type = msg.type          // text | location | image | interactive
+  const from = msg.from
+  const type = msg.type
 
-  // ── Look up employee by phone ────────────────────────────────────────
   const normalised = normalisePhone(from)
   const { data: employee } = await supabase
     .from('employees')
@@ -62,12 +59,11 @@ async function processAsync(body: any) {
     return
   }
   if (employee.status !== 'active') {
-    await sendText(from, "Your account is inactive. Contact your manager.")
+    await sendText(from, 'Your account is inactive. Contact your manager.')
     return
   }
 
-  // ── Get or create session ────────────────────────────────────────────
-  let { data: session } = await supabase
+  const { data: session } = await supabase
     .from('whatsapp_sessions')
     .select('*')
     .eq('employee_id', employee.id)
@@ -75,49 +71,33 @@ async function processAsync(body: any) {
     .limit(1)
     .single()
 
-  // ── Route by message type + session state ────────────────────────────
   const text = msg.text?.body?.trim().toUpperCase() ?? ''
 
-  // Global commands (work from any state)
-  if (text === 'START') {
-    await handleCheckinStart(from, employee, session)
-    return
-  }
-  if (text === 'END') {
-    await handleCheckout(from, employee)
-    return
-  }
-  if (text === 'INCIDENT') {
-    await handleIncidentStart(from, employee, session)
-    return
-  }
+  if (text === 'START') { await handleCheckinStart(from, employee); return }
+  if (text === 'END')   { await handleCheckout(from, employee);     return }
+  if (text === 'INCIDENT') { await handleIncidentStart(from, employee); return }
   if (text === 'HELP') {
     await sendText(from,
-      `*Modeky Commands*\n\n` +
-      `*START* — Check in for your shift\n` +
-      `*END* — Check out at end of shift\n` +
-      `*INCIDENT* — Report an incident\n` +
-      `*HELP* — Show this menu`
+      '*Modeky Commands*\n\n' +
+      '*START* — Check in for your shift\n' +
+      '*END* — Check out at end of shift\n' +
+      '*INCIDENT* — Report an incident\n' +
+      '*HELP* — Show this menu'
     )
     return
   }
 
-  // State-based routing
   if (!session) return
-
-  if (session.session_type === 'checkin') {
-    await routeCheckinStep(from, employee, session, msg, type)
-  } else if (session.session_type === 'incident') {
-    await routeIncidentStep(from, employee, session, msg, type, text)
-  }
+  if (session.session_type === 'checkin')  await routeCheckinStep(from, employee, session, msg, type)
+  if (session.session_type === 'incident') await routeIncidentStep(from, employee, session, msg, type, text)
 }
 
 // ═════════════════════════════════════════════════════════════════════════
 // CHECKIN FLOW
 // ═════════════════════════════════════════════════════════════════════════
 
-async function handleCheckinStart(from: string, employee: any, existingSession: any) {
-  // Check if already checked in today
+async function handleCheckinStart(from: string, employee: any) {
+  const supabase = getSupabase()
   const today = new Date().toISOString().split('T')[0]
   const { data: existing } = await supabase
     .from('attendance')
@@ -128,19 +108,12 @@ async function handleCheckinStart(from: string, employee: any, existingSession: 
     .single()
 
   if (existing) {
-    const t = new Date(existing.checkin_time).toLocaleTimeString('en-ZA', {
-      hour: '2-digit', minute: '2-digit'
-    })
+    const t = new Date(existing.checkin_time).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
     await sendText(from, `✅ You already checked in today at *${t}*.\n\nSend *END* to check out.`)
     return
   }
 
-  // Create/update session
-  await upsertSession(employee, {
-    session_type: 'checkin',
-    current_step: 'awaiting_location',
-    metadata: {},
-  })
+  await upsertSession(employee, { session_type: 'checkin', current_step: 'awaiting_location', metadata: {} })
 
   const name = employee.full_name.split(' ')[0]
   await sendText(from,
@@ -151,6 +124,8 @@ async function handleCheckinStart(from: string, employee: any, existingSession: 
 }
 
 async function routeCheckinStep(from: string, employee: any, session: any, msg: any, type: string) {
+  const supabase = getSupabase()
+
   if (session.current_step === 'awaiting_location') {
     if (type !== 'location') {
       await sendText(from, '📍 Please share your GPS location to continue check-in.')
@@ -159,7 +134,6 @@ async function routeCheckinStep(from: string, employee: any, session: any, msg: 
     const lat = msg.location.latitude
     const lng = msg.location.longitude
 
-    // Find nearest site
     const { data: sites } = await supabase
       .from('sites')
       .select('id, site_name, latitude, longitude, radius_meters')
@@ -171,10 +145,10 @@ async function routeCheckinStep(from: string, employee: any, session: any, msg: 
       session_type: 'checkin',
       current_step: 'awaiting_selfie',
       metadata: {
-        latitude:  lat,
-        longitude: lng,
-        site_id:   nearest?.site?.id ?? null,
-        site_name: nearest?.site?.site_name ?? null,
+        latitude:      lat,
+        longitude:     lng,
+        site_id:       nearest?.site?.id ?? null,
+        site_name:     nearest?.site?.site_name ?? null,
         within_radius: nearest ? nearest.distance <= nearest.site.radius_meters : false,
       },
     })
@@ -183,9 +157,7 @@ async function routeCheckinStep(from: string, employee: any, session: any, msg: 
       ? `📍 *${nearest.site.site_name}* (${Math.round(nearest.distance)}m away)`
       : '📍 Location noted (no site nearby)'
 
-    await sendText(from,
-      `${locationMsg}\n\n📸 Now please send a *selfie* to complete your check-in.`
-    )
+    await sendText(from, `${locationMsg}\n\n📸 Now please send a *selfie* to complete your check-in.`)
     return
   }
 
@@ -195,17 +167,14 @@ async function routeCheckinStep(from: string, employee: any, session: any, msg: 
       return
     }
 
-    const mediaId  = msg.image.id
-    const selfieUrl = await downloadAndStoreMedia(mediaId, employee, 'selfie')
-    const meta      = session.metadata
+    const selfieUrl = await downloadAndStoreMedia(msg.image.id, employee, 'selfie')
+    const meta      = session.metadata ?? {}
 
-    // Determine verification status
     let verificationStatus = 'verified'
     if (!meta.latitude)           verificationStatus = 'missing_gps'
     else if (!selfieUrl)          verificationStatus = 'missing_selfie'
     else if (!meta.within_radius) verificationStatus = 'outside_site'
 
-    // Look up today's schedule
     const today = new Date().toISOString().split('T')[0]
     const { data: schedule } = await supabase
       .from('schedules')
@@ -224,22 +193,18 @@ async function routeCheckinStep(from: string, employee: any, session: any, msg: 
       const scheduled = new Date(now)
       scheduled.setHours(h, m, 0, 0)
       const diffMins = Math.floor((now.getTime() - scheduled.getTime()) / 60000)
-      if (diffMins > 5) {
-        minutesLate     = diffMins
-        attendanceStatus = 'late'
-      }
+      if (diffMins > 5) { minutesLate = diffMins; attendanceStatus = 'late' }
     }
 
-    // Insert attendance record
     const { data: attendance, error: attErr } = await supabase
       .from('attendance')
       .insert({
         company_id:          employee.company_id,
         employee_id:         employee.id,
-        site_id:             meta.site_id,
+        site_id:             meta.site_id ?? null,
         checkin_time:        now.toISOString(),
-        checkin_latitude:    meta.latitude,
-        checkin_longitude:   meta.longitude,
+        checkin_latitude:    meta.latitude ?? null,
+        checkin_longitude:   meta.longitude ?? null,
         selfie_url:          selfieUrl,
         status:              attendanceStatus,
         attendance_date:     today,
@@ -256,18 +221,16 @@ async function routeCheckinStep(from: string, employee: any, session: any, msg: 
       return
     }
 
-    // Mark session idle — check-in done
     await upsertSession(employee, {
       session_type: 'checkin',
       current_step: 'idle',
       metadata: { last_attendance_id: attendance?.id },
     })
 
-    // Confirmation message
     const timeStr = now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
-    const lateMsg  = minutesLate ? `\n⏰ *${minutesLate} minutes late*` : ''
-    const siteMsg  = meta.site_name ? `\n📍 *${meta.site_name}*` : ''
-    const vMsg     = verificationStatus !== 'verified'
+    const lateMsg = minutesLate ? `\n⏰ *${minutesLate} minutes late*` : ''
+    const siteMsg = meta.site_name ? `\n📍 *${meta.site_name}*` : ''
+    const vMsg    = verificationStatus !== 'verified'
       ? `\n⚠️ ${humaniseVerification(verificationStatus)}`
       : '\n✅ GPS & selfie verified'
 
@@ -283,6 +246,7 @@ async function routeCheckinStep(from: string, employee: any, session: any, msg: 
 // ═════════════════════════════════════════════════════════════════════════
 
 async function handleCheckout(from: string, employee: any) {
+  const supabase = getSupabase()
   const today = new Date().toISOString().split('T')[0]
   const { data: record } = await supabase
     .from('attendance')
@@ -299,27 +263,17 @@ async function handleCheckout(from: string, employee: any) {
   }
 
   const now = new Date()
-  const checkinTime = new Date(record.checkin_time)
-  const hours = ((now.getTime() - checkinTime.getTime()) / 3_600_000).toFixed(1)
+  const hours = ((now.getTime() - new Date(record.checkin_time).getTime()) / 3_600_000).toFixed(1)
 
   await supabase
     .from('attendance')
-    .update({
-      checkout_time: now.toISOString(),
-      status: 'checked_out',
-    })
+    .update({ checkout_time: now.toISOString(), status: 'checked_out' })
     .eq('id', record.id)
 
-  await upsertSession(employee, {
-    session_type: 'checkin',
-    current_step: 'idle',
-    metadata: {},
-  })
+  await upsertSession(employee, { session_type: 'checkin', current_step: 'idle', metadata: {} })
 
   const timeStr = now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
-  await sendText(from,
-    `👋 *Checked out at ${timeStr}*\n⏱ Shift duration: *${hours} hours*\n\nHave a safe journey home!`
-  )
+  await sendText(from, `👋 *Checked out at ${timeStr}*\n⏱ Shift duration: *${hours} hours*\n\nHave a safe journey home!`)
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -327,124 +281,58 @@ async function handleCheckout(from: string, employee: any) {
 // ═════════════════════════════════════════════════════════════════════════
 
 const INCIDENT_CATEGORIES: Record<string, string> = {
-  '1': 'injury',
-  '2': 'safety_hazard',
-  '3': 'equipment',
-  '4': 'security',
-  '5': 'fire',
-  '6': 'theft',
-  '7': 'other',
+  '1': 'injury', '2': 'safety_hazard', '3': 'equipment',
+  '4': 'security', '5': 'fire', '6': 'theft', '7': 'other',
 }
 
-async function handleIncidentStart(from: string, employee: any, existingSession: any) {
-  await upsertSession(employee, {
-    session_type: 'incident',
-    current_step: 'awaiting_category',
-    metadata: {},
-  })
-
+async function handleIncidentStart(from: string, employee: any) {
+  await upsertSession(employee, { session_type: 'incident', current_step: 'awaiting_category', metadata: {} })
   await sendText(from,
-    `🚨 *Incident Report*\n\n` +
-    `What type of incident are you reporting?\n\n` +
-    `1 — Injury / Medical\n` +
-    `2 — Safety Hazard\n` +
-    `3 — Equipment Failure\n` +
-    `4 — Security Breach\n` +
-    `5 — Fire / Emergency\n` +
-    `6 — Theft / Vandalism\n` +
-    `7 — Other\n\n` +
-    `Reply with a number (1–7).`
+    '🚨 *Incident Report*\n\n' +
+    'What type of incident are you reporting?\n\n' +
+    '1 — Injury / Medical\n2 — Safety Hazard\n3 — Equipment Failure\n' +
+    '4 — Security Breach\n5 — Fire / Emergency\n6 — Theft / Vandalism\n7 — Other\n\n' +
+    'Reply with a number (1–7).'
   )
 }
 
 async function routeIncidentStep(
-  from: string,
-  employee: any,
-  session: any,
-  msg: any,
-  type: string,
-  text: string
+  from: string, employee: any, session: any,
+  msg: any, type: string, text: string
 ) {
+  const supabase = getSupabase()
   const meta = session.metadata ?? {}
 
-  // ── Step 1: Category ──────────────────────────────────────────────
   if (session.current_step === 'awaiting_category') {
     const category = INCIDENT_CATEGORIES[text]
-    if (!category) {
-      await sendText(from, 'Please reply with a number between 1 and 7.')
-      return
-    }
-
-    await upsertSession(employee, {
-      session_type: 'incident',
-      current_step: 'awaiting_description',
-      metadata: { ...meta, category },
-    })
-
-    await sendText(from,
-      `📝 *${humaniseCategory(category)}*\n\n` +
-      `Please describe what happened in as much detail as possible.\n\n` +
-      `_(Type your description and send)_`
-    )
+    if (!category) { await sendText(from, 'Please reply with a number between 1 and 7.'); return }
+    await upsertSession(employee, { session_type: 'incident', current_step: 'awaiting_description', metadata: { ...meta, category } })
+    await sendText(from, `📝 *${humaniseCategory(category)}*\n\nPlease describe what happened.\n\n_(Type your description and send)_`)
     return
   }
 
-  // ── Step 2: Description ───────────────────────────────────────────
   if (session.current_step === 'awaiting_description') {
-    if (type !== 'text' || text.length < 5) {
-      await sendText(from, 'Please type a description of the incident.')
-      return
-    }
-
-    await upsertSession(employee, {
-      session_type: 'incident',
-      current_step: 'awaiting_location',
-      metadata: { ...meta, description: msg.text.body.trim() },
-    })
-
-    await sendText(from,
-      `📍 Please share your *current location* so we know where this happened.\n\n` +
-      `Tap *📎* → *Location* → *Send your current location*.`
-    )
+    if (type !== 'text' || text.length < 5) { await sendText(from, 'Please type a description of the incident.'); return }
+    await upsertSession(employee, { session_type: 'incident', current_step: 'awaiting_location', metadata: { ...meta, description: msg.text.body.trim() } })
+    await sendText(from, '📍 Please share your *current location* so we know where this happened.\n\nTap *📎* → *Location* → *Send your current location*.')
     return
   }
 
-  // ── Step 3: Location ──────────────────────────────────────────────
   if (session.current_step === 'awaiting_location') {
-    if (type !== 'location') {
-      await sendText(from, '📍 Please share your location.')
-      return
-    }
-
+    if (type !== 'location') { await sendText(from, '📍 Please share your location.'); return }
     const { data: sites } = await supabase
-      .from('sites')
-      .select('id, site_name, latitude, longitude, radius_meters')
-      .eq('company_id', employee.company_id)
-
+      .from('sites').select('id, site_name, latitude, longitude, radius_meters').eq('company_id', employee.company_id)
     const nearest = findNearestSite(msg.location.latitude, msg.location.longitude, sites ?? [])
-
     await upsertSession(employee, {
-      session_type: 'incident',
-      current_step: 'awaiting_photo',
-      metadata: {
-        ...meta,
-        latitude:  msg.location.latitude,
-        longitude: msg.location.longitude,
-        site_id:   nearest?.site?.id ?? null,
-      },
+      session_type: 'incident', current_step: 'awaiting_photo',
+      metadata: { ...meta, latitude: msg.location.latitude, longitude: msg.location.longitude, site_id: nearest?.site?.id ?? null },
     })
-
-    await sendText(from,
-      `📸 Almost done. Send a *photo* of the incident if you have one.\n\n` +
-      `_(Send a photo, or type *SKIP* to submit without a photo)_`
-    )
+    await sendText(from, '📸 Almost done. Send a *photo* of the incident if you have one.\n\n_(Send a photo, or type *SKIP* to submit without a photo)_')
     return
   }
 
-  // ── Step 4: Photo (optional) ──────────────────────────────────────
   if (session.current_step === 'awaiting_photo') {
     let mediaUrls: string[] = meta.media_urls ?? []
-
     if (type === 'image') {
       const url = await downloadAndStoreMedia(msg.image.id, employee, 'incident')
       if (url) mediaUrls = [...mediaUrls, url]
@@ -453,44 +341,33 @@ async function routeIncidentStep(
       return
     }
 
-    // Create the incident record
     const { data: incident, error } = await supabase
       .from('incidents')
       .insert({
-        company_id:   employee.company_id,
-        employee_id:  employee.id,
-        site_id:      meta.site_id ?? null,
-        category:     meta.category,
-        description:  meta.description,
-        media_urls:   mediaUrls,
-        latitude:     meta.latitude ?? null,
-        longitude:    meta.longitude ?? null,
-        severity:     'medium',   // default; manager can escalate
-        status:       'open',
-        session_id:   session.id,
+        company_id:  employee.company_id,
+        employee_id: employee.id,
+        site_id:     meta.site_id ?? null,
+        category:    meta.category,
+        description: meta.description,
+        media_urls:  mediaUrls,
+        latitude:    meta.latitude ?? null,
+        longitude:   meta.longitude ?? null,
+        severity:    'medium',
+        status:      'open',
+        session_id:  session.id,
       })
       .select('id')
       .single()
 
-    if (error) {
-      console.error('Incident insert error:', error)
-      await sendText(from, '⚠️ Failed to save your report. Please try again.')
-      return
-    }
+    if (error) { console.error('Incident insert error:', error); await sendText(from, '⚠️ Failed to save your report. Please try again.'); return }
 
-    // Reset session
-    await upsertSession(employee, {
-      session_type: 'incident',
-      current_step: 'idle',
-      metadata: {},
-    })
+    await upsertSession(employee, { session_type: 'incident', current_step: 'idle', metadata: {} })
 
     await sendText(from,
       `✅ *Incident report submitted!*\n\n` +
       `📋 Category: *${humaniseCategory(meta.category)}*\n` +
       `🔢 Ref: #${(incident?.id ?? '').slice(0, 8).toUpperCase()}\n\n` +
-      `Your manager has been notified. Stay safe!\n\n` +
-      `Send *START* to check in or *HELP* for commands.`
+      `Your manager has been notified. Stay safe!\n\nSend *START* to check in or *HELP* for commands.`
     )
   }
 }
@@ -500,28 +377,22 @@ async function routeIncidentStep(
 // ═════════════════════════════════════════════════════════════════════════
 
 function normalisePhone(raw: string): string {
-  // Strip leading + or 00, keep digits only
   let n = raw.replace(/\D/g, '')
   if (n.startsWith('00')) n = n.slice(2)
   return `+${n}`
 }
 
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000 // metres
+  const R = 6371000
   const dLat = ((lat2 - lat1) * Math.PI) / 180
   const dLon = ((lon2 - lon1) * Math.PI) / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-    Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLon / 2) ** 2
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
 function findNearestSite(lat: number, lng: number, sites: any[]) {
   if (!sites.length) return null
-  let nearest = null
-  let minDist = Infinity
+  let nearest = null; let minDist = Infinity
   for (const site of sites) {
     const d = haversineDistance(lat, lng, site.latitude, site.longitude)
     if (d < minDist) { minDist = d; nearest = site }
@@ -529,101 +400,48 @@ function findNearestSite(lat: number, lng: number, sites: any[]) {
   return nearest ? { site: nearest, distance: minDist } : null
 }
 
-async function upsertSession(employee: any, fields: {
-  session_type: string
-  current_step: string
-  metadata: Record<string, any>
-}) {
+async function upsertSession(employee: any, fields: { session_type: string; current_step: string; metadata: Record<string, any> }) {
+  const supabase = getSupabase()
   await supabase
     .from('whatsapp_sessions')
     .upsert(
-      {
-        employee_id:  employee.id,
-        company_id:   employee.company_id,
-        ...fields,
-        state:        fields.current_step, // keep old column in sync
-        updated_at:   new Date().toISOString(),
-      },
+      { employee_id: employee.id, company_id: employee.company_id, ...fields, state: fields.current_step, updated_at: new Date().toISOString() },
       { onConflict: 'employee_id' }
     )
 }
 
-async function downloadAndStoreMedia(
-  mediaId: string,
-  employee: any,
-  type: 'selfie' | 'incident'
-): Promise<string | null> {
+async function downloadAndStoreMedia(mediaId: string, employee: any, type: 'selfie' | 'incident'): Promise<string | null> {
+  const supabase = getSupabase()
   try {
-    // 1. Get media URL from Meta
-    const urlRes = await fetch(
-      `https://graph.facebook.com/v19.0/${mediaId}`,
-      { headers: { Authorization: `Bearer ${WA_TOKEN}` } }
-    )
+    const urlRes = await fetch(`https://graph.facebook.com/v19.0/${mediaId}`, { headers: { Authorization: `Bearer ${waToken()}` } })
     const urlData = await urlRes.json()
-    const mediaUrl: string = urlData.url
-    if (!mediaUrl) return null
-
-    // 2. Download the file
-    const fileRes = await fetch(mediaUrl, {
-      headers: { Authorization: `Bearer ${WA_TOKEN}` }
-    })
+    if (!urlData.url) return null
+    const fileRes = await fetch(urlData.url, { headers: { Authorization: `Bearer ${waToken()}` } })
     const buffer = await fileRes.arrayBuffer()
     const contentType = fileRes.headers.get('content-type') ?? 'image/jpeg'
     const ext = contentType.includes('png') ? 'png' : 'jpg'
-
-    // 3. Upload to Supabase Storage
-    const bucket  = type === 'selfie' ? 'selfies' : 'incident-media'
-    const path    = `${employee.company_id}/${employee.id}/${Date.now()}.${ext}`
-
-    const { error } = await supabase.storage
-      .from(bucket)
-      .upload(path, buffer, { contentType, upsert: false })
-
+    const bucket = type === 'selfie' ? 'selfies' : 'incident-media'
+    const path = `${employee.company_id}/${employee.id}/${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from(bucket).upload(path, buffer, { contentType, upsert: false })
     if (error) { console.error('Storage upload error:', error); return null }
-
-    const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path)
-    return publicUrl
+    return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl
   } catch (err) {
-    console.error('Media download error:', err)
-    return null
+    console.error('Media download error:', err); return null
   }
 }
 
 async function sendText(to: string, text: string) {
-  await fetch(
-    `https://graph.facebook.com/v19.0/${WA_PHONE_ID}/messages`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${WA_TOKEN}`,
-      },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to,
-        type: 'text',
-        text: { body: text },
-      }),
-    }
-  )
+  await fetch(`https://graph.facebook.com/v19.0/${waPhoneId()}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${waToken()}` },
+    body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: text } }),
+  })
 }
 
 function humaniseVerification(v: string): string {
-  return {
-    outside_site:   'You were outside the expected site radius',
-    missing_selfie: 'Selfie could not be saved — please retry',
-    missing_gps:    'Location was not captured',
-  }[v] ?? v
+  return ({ outside_site: 'You were outside the expected site radius', missing_selfie: 'Selfie could not be saved', missing_gps: 'Location was not captured' } as Record<string,string>)[v] ?? v
 }
 
 function humaniseCategory(c: string): string {
-  return {
-    injury:        'Injury / Medical',
-    safety_hazard: 'Safety Hazard',
-    equipment:     'Equipment Failure',
-    security:      'Security Breach',
-    fire:          'Fire / Emergency',
-    theft:         'Theft / Vandalism',
-    other:         'Other',
-  }[c] ?? c
+  return ({ injury: 'Injury / Medical', safety_hazard: 'Safety Hazard', equipment: 'Equipment Failure', security: 'Security Breach', fire: 'Fire / Emergency', theft: 'Theft / Vandalism', other: 'Other' } as Record<string,string>)[c] ?? c
 }

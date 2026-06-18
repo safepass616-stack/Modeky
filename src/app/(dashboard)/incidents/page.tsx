@@ -70,8 +70,8 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Se
     .order('created_at', { ascending: false })
     .limit(100)
 
-  if (searchParams.status)   query = query.eq('status', searchParams.status)
-  if (searchParams.severity) query = query.eq('severity', searchParams.severity)
+  if (searchParams.status)   query = (query as any).eq('status', searchParams.status)
+  if (searchParams.severity) query = (query as any).eq('severity', searchParams.severity)
 
   const { data: incidents } = await query
 
@@ -81,11 +81,10 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Se
     .select('status')
     .eq('company_id', profile.company_id)
 
-  const countsList = (counts as Array<{ status: string }>) || []
-  const open     = countsList.filter(r => r.status === 'open').length     ?? 0
-  const inReview = countsList.filter(r => r.status === 'in_review').length ?? 0
-  const resolved = countsList.filter(r => r.status === 'resolved').length  ?? 0
-  const total    = countsList.length ?? 0
+  const open     = counts?.filter(r => r.status === 'open').length     ?? 0
+  const inReview = counts?.filter(r => r.status === 'in_review').length ?? 0
+  const resolved = counts?.filter(r => r.status === 'resolved').length  ?? 0
+  const total    = counts?.length ?? 0
 
   return (
     <div className="space-y-6">

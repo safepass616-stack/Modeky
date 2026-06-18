@@ -22,22 +22,6 @@ export type VerificationStatus =
   | 'missing_selfie'
   | 'missing_gps'
   | 'manual_override';
-  export type VerificationStatus = 'verified' | 'outside_site' | 'missing_selfie' | 'missing_gps' | 'manual_override';
-
-// Append verification_status to your existing Attendance row type
-export interface Attendance {
-  id: string;
-  company_id: string;
-  employee_id: string;
-  site_id: string | null;
-  attendance_date: string;
-  check_in_time: string;
-  checkout_time: string | null;
-  status: 'present' | 'late' | 'absent';
-  minutes_late: number;
-  verification_status: VerificationStatus | null; // New field
-  created_at: string;
-  updated_at: string;
 export type WhatsappSessionState = 'idle' | 'awaiting_location' | 'awaiting_selfie';
 export type WhatsappPendingAction = 'check_in' | 'check_out';
 
@@ -135,11 +119,55 @@ export interface WhatsappSession {
   id: string;
   company_id: string;
   employee_id: string;
+  // Legacy columns
   state: WhatsappSessionState;
   pending_action: WhatsappPendingAction | null;
   pending_latitude: number | null;
   pending_longitude: number | null;
+  // Generic session engine columns
+  session_type: 'checkin' | 'incident' | 'leave';
+  current_step: string;
+  metadata: Record<string, unknown>;
+  expires_at: string | null;
   updated_at: string;
+  created_at: string;
+}
+
+export type IncidentCategory =
+  | 'injury'
+  | 'safety_hazard'
+  | 'equipment'
+  | 'security'
+  | 'fire'
+  | 'theft'
+  | 'other';
+export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type IncidentStatus   = 'open' | 'in_review' | 'resolved' | 'closed';
+
+export interface Incident {
+  id: string;
+  company_id: string;
+  employee_id: string;
+  site_id: string | null;
+  attendance_id: string | null;
+  session_id: string | null;
+  category: IncidentCategory;
+  description: string | null;
+  severity: IncidentSeverity;
+  media_urls: string[];
+  latitude: number | null;
+  longitude: number | null;
+  status: IncidentStatus;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  resolution_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IncidentWithRelations extends Incident {
+  employees: Pick<Employee, 'id' | 'full_name' | 'employee_code'> | null;
+  sites: Pick<Site, 'id' | 'site_name'> | null;
 }
 
 export interface AuditLog {
@@ -226,6 +254,16 @@ export interface Database {
           end_time: string;
         } & Record<string, unknown>;
         Update: Partial<Schedule> & Record<string, unknown>;
+        Relationships: [];
+      };
+      incidents: {
+        Row: Incident & Record<string, unknown>;
+        Insert: Partial<Incident> & {
+          company_id: string;
+          employee_id: string;
+          category: IncidentCategory;
+        } & Record<string, unknown>;
+        Update: Partial<Incident> & Record<string, unknown>;
         Relationships: [];
       };
       audit_logs: {
