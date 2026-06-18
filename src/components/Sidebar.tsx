@@ -87,7 +87,7 @@ export function Sidebar({ companyName, userEmail, userName }: SidebarProps) {
             const isActive =
               href === '/dashboard'
                 ? pathname === '/dashboard'
-                : pathname.startsWith(href)
+                : pathname?.startsWith(href)
 
             return (
               <Link
