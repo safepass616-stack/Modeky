@@ -119,30 +119,16 @@ export interface WhatsappSession {
   id: string;
   company_id: string;
   employee_id: string;
-  // Legacy columns
   state: WhatsappSessionState;
   pending_action: WhatsappPendingAction | null;
   pending_latitude: number | null;
   pending_longitude: number | null;
-  // Generic session engine columns
-  session_type: 'checkin' | 'incident' | 'leave';
+  session_type: 'check_in' | 'incident' | 'leave_request' | 'payslip';
   current_step: string;
   metadata: Record<string, unknown>;
   expires_at: string | null;
   updated_at: string;
-  created_at: string;
 }
-
-export type IncidentCategory =
-  | 'injury'
-  | 'safety_hazard'
-  | 'equipment'
-  | 'security'
-  | 'fire'
-  | 'theft'
-  | 'other';
-export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical';
-export type IncidentStatus   = 'open' | 'in_review' | 'resolved' | 'closed';
 
 export interface Incident {
   id: string;
@@ -150,24 +136,12 @@ export interface Incident {
   employee_id: string;
   site_id: string | null;
   attendance_id: string | null;
-  session_id: string | null;
-  category: IncidentCategory;
   description: string | null;
-  severity: IncidentSeverity;
-  media_urls: string[];
-  latitude: number | null;
-  longitude: number | null;
-  status: IncidentStatus;
-  resolved_at: string | null;
-  resolved_by: string | null;
-  resolution_note: string | null;
+  media_url: string | null;
+  media_type: 'photo' | 'voice' | null;
+  status: 'open' | 'reviewed' | 'resolved';
   created_at: string;
   updated_at: string;
-}
-
-export interface IncidentWithRelations extends Incident {
-  employees: Pick<Employee, 'id' | 'full_name' | 'employee_code'> | null;
-  sites: Pick<Site, 'id' | 'site_name'> | null;
 }
 
 export interface AuditLog {
@@ -261,7 +235,6 @@ export interface Database {
         Insert: Partial<Incident> & {
           company_id: string;
           employee_id: string;
-          category: IncidentCategory;
         } & Record<string, unknown>;
         Update: Partial<Incident> & Record<string, unknown>;
         Relationships: [];

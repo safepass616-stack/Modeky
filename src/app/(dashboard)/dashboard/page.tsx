@@ -4,7 +4,7 @@
 
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { Users, UserCheck, Clock, Building } from 'lucide-react'
+import { Users, UserCheck, Clock, Building, AlertTriangle } from 'lucide-react'
 import { StatCard } from '@/components/StatCard'
 import { StatusBadge } from '@/components/StatusBadge'
 import { AttendanceFilters } from './AttendanceFilters'
@@ -50,6 +50,7 @@ export default async function DashboardPage({
     { count: totalEmployees },
     { count: checkedInCount },
     { count: lateCount },
+    { count: incidentsTodayCount },
     { data: sitesData },
     { data: attendanceRows },
     { data: employees },
@@ -75,6 +76,13 @@ export default async function DashboardPage({
       .gt('minutes_late', 0)
       .gte('checkin_time', `${today}T00:00:00`)
       .lte('checkin_time', `${today}T23:59:59`),
+
+    supabase
+      .from('incidents')
+      .select('*', { count: 'exact', head: true })
+      .eq('company_id', profile.company_id)
+      .gte('created_at', `${today}T00:00:00`)
+      .lte('created_at', `${today}T23:59:59`),
 
     supabase
       .from('sites')
@@ -157,7 +165,7 @@ export default async function DashboardPage({
       </div>
 
       {/* ── KPI cards ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           label="Total Employees"
           value={totalEmployees ?? 0}
@@ -193,6 +201,13 @@ export default async function DashboardPage({
           }
           icon={Building}
           variant={staffedSites < totalSites ? 'red' : 'green'}
+        />
+        <StatCard
+          label="Incidents Today"
+          value={incidentsTodayCount ?? 0}
+          sub={incidentsTodayCount ? 'Reported via WhatsApp' : 'Nothing reported'}
+          icon={AlertTriangle}
+          variant={incidentsTodayCount ? 'red' : 'default'}
         />
       </div>
 

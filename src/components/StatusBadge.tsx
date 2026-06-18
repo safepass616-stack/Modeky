@@ -14,7 +14,7 @@ function resolveVariant(status: string): NonNullable<StatusBadgeProps['variant']
   if (['present', 'verified', 'on site', 'active', 'checked in', 'fully staffed'].includes(s)) return 'green'
   if (['late', 'understaffed', 'outside_site', 'on leave'].includes(s)) return 'amber'
   if (['absent', 'no check-ins', 'missing_gps', 'missing_selfie'].includes(s)) return 'red'
-  if (['in review', 'pending', 'manual_override'].includes(s)) return 'violet'
+  if (['in review', 'reviewed', 'pending', 'manual_override'].includes(s)) return 'violet'
   if (['open'].includes(s)) return 'blue'
   if (['resolved', 'closed'].includes(s)) return 'slate'
   return 'slate'

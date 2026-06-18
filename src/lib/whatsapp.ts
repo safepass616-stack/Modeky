@@ -57,6 +57,32 @@ export async function sendLocationRequest(to: string, body: string) {
 }
 
 /**
+ * Send a message with up to 3 tappable reply buttons (WhatsApp's limit).
+ * Falls back gracefully on the receiving end if the client doesn't support
+ * interactive messages — the buttons still arrive as plain text replies.
+ */
+export async function sendButtonMessage(
+  to: string,
+  bodyText: string,
+  buttons: { id: string; title: string }[]
+) {
+  return sendWhatsappRequest({
+    to,
+    type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: bodyText },
+      action: {
+        buttons: buttons.slice(0, 3).map((b) => ({
+          type: 'reply',
+          reply: { id: b.id, title: b.title.slice(0, 20) },
+        })),
+      },
+    },
+  });
+}
+
+/**
  * Download media (e.g. an image sent by a user) from the WhatsApp Cloud API.
  * Returns the raw bytes and content type, ready to be re-uploaded to
  * Supabase Storage.

@@ -1,83 +1,68 @@
-import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { redirect } from 'next/navigation';
-import Link from 'next/link';
-import { LoginForm } from './LoginForm';
-import { ModekyLogo } from '@/components/ModekyLogo';
+// src/app/login/page.tsx
+// Modeky login page — dark navy hero + centred white card
+
+import { redirect } from 'next/navigation'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { LoginForm } from './LoginForm'
+import { ModekyLogo } from '@/components/ModekyLogo'
 
 export default async function LoginPage() {
-  const supabase = createServerSupabaseClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (user) {
-    redirect('/dashboard');
-  }
+  const supabase = createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (user) redirect('/dashboard')
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-background via-background to-secondary/50">
-      {/* Header */}
-      <div className="p-4 sm:p-6 lg:p-8">
-        <Link href="/" className="inline-flex items-center gap-2 hover:opacity-80 transition">
-          <ModekyLogo size={32} showText={true} variant="horizontal" />
-        </Link>
+    <div
+      className="min-h-screen flex flex-col items-center justify-center px-4 relative overflow-hidden"
+      style={{ backgroundColor: '#0F172A' }}
+    >
+      {/* Subtle grid background */}
+      <div
+        className="absolute inset-0 opacity-[0.04] pointer-events-none"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)
+          `,
+          backgroundSize: '48px 48px',
+        }}
+      />
+
+      {/* Blue glow */}
+      <div
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] rounded-full pointer-events-none"
+        style={{
+          background: 'radial-gradient(ellipse at center, rgba(37,99,235,0.2) 0%, transparent 70%)',
+        }}
+      />
+
+      {/* Logo + wordmark */}
+      <div className="relative flex flex-col items-center mb-8">
+        <ModekyLogo size={40} variant="inverted" />
+        <h1
+          className="text-white text-2xl font-bold mt-3 tracking-tight"
+          style={{ fontFamily: 'var(--font-heading)' }}
+        >
+          Modeky
+        </h1>
+        <p className="text-slate-400 text-sm mt-1">The WhatsApp Workforce Operating System</p>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8 pb-12">
-        <div className="w-full max-w-md">
-          {/* Card */}
-          <div className="bg-card border border-border rounded-xl shadow-lg p-8 sm:p-10">
-            {/* Heading */}
-            <div className="mb-8">
-              <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
-                Welcome Back
-              </h1>
-              <p className="text-muted-foreground">
-                Sign in to your Modeky workspace
-              </p>
-            </div>
-
-            {/* Form */}
-            <LoginForm />
-
-            {/* Divider */}
-            <div className="my-6 relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-border" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-card text-muted-foreground">
-                  New to Modeky?
-                </span>
-              </div>
-            </div>
-
-            {/* Sign Up Link */}
-            <Link
-              href="/signup"
-              className="block w-full text-center px-4 py-2.5 border border-border rounded-lg font-medium text-foreground hover:bg-muted transition"
-            >
-              Create an account
-            </Link>
-          </div>
-
-          {/* Footer Links */}
-          <div className="mt-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              Need help?{' '}
-              <a href="#" className="text-primary hover:underline font-medium">
-                Contact support
-              </a>
-            </p>
-          </div>
-        </div>
+      {/* Login card */}
+      <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-8">
+        <h2
+          className="text-lg font-bold text-slate-900 mb-6"
+          style={{ fontFamily: 'var(--font-heading)' }}
+        >
+          Sign in
+        </h2>
+        <LoginForm />
       </div>
 
-      {/* Background Elements */}
-      <div className="fixed top-0 right-0 -z-10 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
-      <div className="fixed bottom-0 left-0 -z-10 w-96 h-96 bg-success/5 rounded-full blur-3xl" />
+      {/* Footer */}
+      <p className="relative text-slate-600 text-xs mt-8">
+        © {new Date().getFullYear()} Modeky. All rights reserved.
+      </p>
     </div>
-  );
+  )
 }

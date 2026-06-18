@@ -62,7 +62,7 @@ export function Sidebar({ companyName, userEmail, userName }: SidebarProps) {
         className="px-5 py-5 flex items-center gap-2.5 flex-shrink-0"
         style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
       >
-        <ModekyLogo size={28} variant="icon" />
+        <ModekyLogo size={28} variant="inverted" />
         <div className="min-w-0">
           <span
             className="text-white font-bold text-base leading-none block"
