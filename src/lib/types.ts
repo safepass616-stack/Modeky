@@ -22,6 +22,22 @@ export type VerificationStatus =
   | 'missing_selfie'
   | 'missing_gps'
   | 'manual_override';
+  export type VerificationStatus = 'verified' | 'outside_site' | 'missing_selfie' | 'missing_gps' | 'manual_override';
+
+// Append verification_status to your existing Attendance row type
+export interface Attendance {
+  id: string;
+  company_id: string;
+  employee_id: string;
+  site_id: string | null;
+  attendance_date: string;
+  check_in_time: string;
+  checkout_time: string | null;
+  status: 'present' | 'late' | 'absent';
+  minutes_late: number;
+  verification_status: VerificationStatus | null; // New field
+  created_at: string;
+  updated_at: string;
 export type WhatsappSessionState = 'idle' | 'awaiting_location' | 'awaiting_selfie';
 export type WhatsappPendingAction = 'check_in' | 'check_out';
 
