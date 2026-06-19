@@ -43,3 +43,22 @@ export const DISPLAY_TIME_FORMAT: Intl.DateTimeFormatOptions = {
   minute: '2-digit',
   hour12: false,
 };
+// Add these to the bottom of lib/constants.ts
+
+// ── Attendance Status Labels ──────────────────────────────────────────────
+
+export const ATTENDANCE_STATUS_LABELS: Record<string, string> = {
+  present: 'Present',
+  late: 'Late',
+  absent: 'Absent',
+  checked_out: 'Checked Out',
+};
+
+// ── Verification Status Labels ────────────────────────────────────────────
+
+export const VERIFICATION_STATUS_LABELS: Record<string, string> = {
+  verified: 'Verified',
+  outside_site: 'Outside Site',
+  missing_selfie: 'Missing Selfie',
+  missing_gps: 'Missing GPS',
+};
