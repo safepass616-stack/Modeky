@@ -44,7 +44,38 @@ export async function GET(request: NextRequest) {
 // ----------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
   const body = await request.json();
+  const crypto = require('crypto');
 
+  // Add this inside POST(), after const body = await request.json();
+  const signature = request.headers.get('x-hub-signature-256');
+  if (!verifySignature(body, signature)) {
+    return new NextResponse('Unauthorized', { status: 401 });
+  }
+  
+  // Add this function at the bottom of the file
+  function verifySignature(body: any, signature: string | null): boolean {
+    if (!signature) return false;
+    
+    const appSecret = process.env.META_APP_SECRET;
+    if (!appSecret) {
+      console.error('META_APP_SECRET not configured');
+      return false;
+    }
+  
+    const expected = crypto
+      .createHmac('sha256', appSecret)
+      .update(JSON.stringify(body))
+      .digest('hex');
+  
+    try {
+      return crypto.timingSafeEqual(
+        Buffer.from(signature.replace('sha256=', '')),
+        Buffer.from(expected)
+      );
+    } catch {
+      return false;
+    }
+  }
   try {
     const entry = body.entry?.[0];
     const change = entry?.changes?.[0];
