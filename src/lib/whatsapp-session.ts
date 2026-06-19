@@ -1,6 +1,5 @@
 // lib/whatsapp-session.ts
 // Generic session engine for WhatsApp conversation flows
-// Manages the whatsapp_sessions table with session_type, current_step, metadata
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/types';
@@ -9,7 +8,9 @@ type SupabaseAdmin = SupabaseClient<Database>;
 
 const SESSION_TTL_MINUTES = 30;
 
-export interface WhatsappSession {
+// Use a type that matches what Supabase actually returns from the DB query
+// We use Pick to select only the columns we need, avoiding conflicts with old columns
+export type WhatsappSession = {
   id: string;
   company_id: string;
   employee_id: string;
@@ -20,7 +21,7 @@ export interface WhatsappSession {
   created_at: string;
   updated_at: string;
   expires_at: string | null;
-}
+};
 
 // ── Get Active Session ────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ export async function getActiveSession(
 ): Promise<WhatsappSession | null> {
   const { data, error } = await supabase
     .from('whatsapp_sessions')
-    .select('*')
+    .select('id, company_id, employee_id, session_type, current_step, metadata, status, created_at, updated_at, expires_at')
     .eq('employee_id', employeeId)
     .eq('status', 'active')
     .order('created_at', { ascending: false })
@@ -42,13 +43,19 @@ export async function getActiveSession(
     return null;
   }
 
+  if (!data) return null;
+
   // Check if session expired
-  if (data && data.expires_at && new Date(data.expires_at) < new Date()) {
+  if (data.expires_at && new Date(data.expires_at) < new Date()) {
     await expireSession(supabase, data.id);
     return null;
   }
 
-  return data;
+  // Cast metadata from jsonb to Record<string, any>
+  return {
+    ...data,
+    metadata: (data.metadata as Record<string, any>) || {},
+  } as WhatsappSession;
 }
 
 // ── Start New Session ─────────────────────────────────────────────────────
@@ -78,15 +85,18 @@ export async function startSession(
       status: 'active',
       expires_at: expiresAt.toISOString(),
     })
-    .select()
+    .select('id, company_id, employee_id, session_type, current_step, metadata, status, created_at, updated_at, expires_at')
     .single();
 
-  if (error) {
+  if (error || !data) {
     console.error('Error starting session:', error);
     throw new Error('Failed to start WhatsApp session');
   }
 
-  return data;
+  return {
+    ...data,
+    metadata: (data.metadata as Record<string, any>) || {},
+  } as WhatsappSession;
 }
 
 // ── Advance Session Step ──────────────────────────────────────────────────
@@ -103,8 +113,9 @@ export async function advanceSession(
     .eq('id', sessionId)
     .single();
 
+  const existingMetadata = (session?.metadata as Record<string, any>) || {};
   const updatedMetadata = {
-    ...(session?.metadata || {}),
+    ...existingMetadata,
     ...metadataUpdates,
   };
 
