@@ -1,7 +1,7 @@
 'use client'
 
 // src/components/Sidebar.tsx
-// Dark navy sidebar — matches the Modeky Figma design system
+// Dark navy sidebar — matches the Modeky design system
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -38,7 +38,6 @@ export function Sidebar({ companyName, userEmail, userName }: SidebarProps) {
   const pathname = usePathname()
   const router   = useRouter()
 
-  // Derive initials from name or email
   const initials = userName
     ? userName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
     : (userEmail?.[0] ?? 'A').toUpperCase()
@@ -59,31 +58,21 @@ export function Sidebar({ companyName, userEmail, userName }: SidebarProps) {
     >
       {/* ── Logo ───────────────────────────────────────────────────── */}
       <div
-        className="px-5 py-5 flex items-center gap-2.5 flex-shrink-0"
+        className="px-5 py-5 flex flex-col gap-0.5 flex-shrink-0"
         style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
       >
-        <ModekyLogo size={28} variant="inverted" />
-        <div className="min-w-0">
-          <span
-            className="text-white font-bold text-base leading-none block"
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
-            Modeky
+        <ModekyLogo size={26} variant="inverted" />
+        {companyName && (
+          <span className="text-slate-500 text-[11px] truncate block pl-[34px]">
+            {companyName}
           </span>
-          {companyName && (
-            <span className="text-slate-500 text-[11px] truncate block mt-0.5">
-              {companyName}
-            </span>
-          )}
-        </div>
+        )}
       </div>
 
       {/* ── Nav ────────────────────────────────────────────────────── */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         <div className="space-y-0.5">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            // Active if pathname starts with href (handles nested routes)
-            // But /dashboard should only match exactly to avoid highlighting for all
             const isActive =
               href === '/dashboard'
                 ? pathname === '/dashboard'
@@ -127,7 +116,6 @@ export function Sidebar({ companyName, userEmail, userName }: SidebarProps) {
         className="px-3 py-4 flex-shrink-0"
         style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}
       >
-        {/* Avatar + name */}
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
             {initials}
@@ -138,7 +126,6 @@ export function Sidebar({ companyName, userEmail, userName }: SidebarProps) {
           </div>
         </div>
 
-        {/* Sign out */}
         <button
           onClick={handleSignOut}
           className="w-full flex items-center gap-2 px-3 py-2 text-slate-500 hover:text-slate-300 text-xs transition-colors mt-1 rounded-lg hover:bg-white/5"
